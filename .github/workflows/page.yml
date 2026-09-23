@@ -1,0 +1,61 @@
+# Republishes the download page when its generator changes. A push to develop that touches the page
+# generator, its merge helper, the publish script or the assets script - or "Run workflow" - checks the
+# generator on a hosted runner (it compiles and renders a whole page from an empty tree, so a generator that
+# crashes never reaches the site), then runs `tools/repo_publish.sh --local index` on the self-hosted runner,
+# where the site's tree is (the build server's disk), in the build image - the same three-way merge with the
+# copy the site runs as a publish from a checkout (tools/repo_index_merge.py), which is why the checkout has
+# the whole history. Before this, a page change went live only with the next package publish or by hand.
+# Gated by AB_CI_ENABLED, like every autobleem2 workflow.
+name: page
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'tools/repo_index.py'
+      - 'tools/repo_index_merge.py'
+      - 'tools/repo_publish.sh'
+      - 'tools/repo_assets.py'
+      - '.github/workflows/page.yml'
+  workflow_dispatch:
+
+# one publish to the site at a time, whichever workflow it comes from in this repository
+concurrency:
+  group: site-page
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: vars.AB_CI_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: The scripts compile
+        run: |
+          python3 -m py_compile tools/repo_index.py tools/repo_index_merge.py tools/repo_assets.py
+          bash -n tools/repo_publish.sh
+      - name: A page renders from an empty tree
+        run: |
+          mkdir -p "$RUNNER_TEMP/site"
+          python3 tools/repo_index.py "$RUNNER_TEMP/site"
+          test -s "$RUNNER_TEMP/site/index.html"
+
+  publish:
+    needs: check
+    runs-on: [self-hosted, linux, x64]
+    env:
+      AB_REPO_DIR: /home/claude/autobleem-repo
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the merge's base is `git merge-base HEAD origin/develop`
+      - name: Publish the page
+        run: |
+          set -euo pipefail
+          # root in the container, the checkout the runner's: git would call it dubious ownership and the
+          # merge would lose its base
+          docker run --rm \
+            -v "$PWD:$PWD" -w "$PWD" -v "$AB_REPO_DIR:$AB_REPO_DIR" -e REPO_DIR="$AB_REPO_DIR" \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+            ghcr.io/autobleem2/autobleem-build:latest \
+            bash tools/repo_publish.sh --local index
