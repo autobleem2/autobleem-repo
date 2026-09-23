@@ -818,27 +818,31 @@ def index_manuals(repo, base_url):
 #*******************************
 # development builds
 #*******************************
-# one development build on the site (the owner's call, 2026-09-23 - the build server's disk ran full); an older
-# one stays only while the newest has no images yet (a run publishes its packages ~30 min before its images)
+# one development build on the site (the owner's call, 2026-09-23 - the build server's disk ran full). A run
+# publishes in pieces - each image as it is built, the packages last - so the one before stays while the
+# newest has no packages yet, and while it has no images yet: neither the launcher's update (packages) nor
+# Imager's nightly list (images) is ever left with nothing between two publishes
 NIGHTLY_KEEP = 1
 
 
-def nightly_folders_to_keep(folders, has_images):
-    """The newest NIGHTLY_KEEP of `folders` (oldest first), plus the newest older one with images while none of
-    those has any - so the site and Imager's nightly list are never without images between two publishes."""
+def nightly_folders_to_keep(folders, has_images, has_packages=lambda f: True):
+    """The newest NIGHTLY_KEEP of `folders` (oldest first), plus the newest older one with packages while none
+    of those has any, and the newest older one with images while none of those has any."""
     keep = folders[-NIGHTLY_KEEP:]
-    if keep and not any(has_images(f) for f in keep):
-        older = [f for f in folders[:-NIGHTLY_KEEP] if has_images(f)]
-        if older:
-            keep = [older[-1]] + keep
-    return keep
+    older = folders[:-NIGHTLY_KEEP]
+    for has in (has_packages, has_images):
+        if keep and not any(has(f) for f in keep):
+            found = [f for f in older if has(f)]
+            if found and found[-1] not in keep:
+                keep = [found[-1]] + keep
+    return sorted(keep, key=folders.index)
 
 
 def index_nightly(repo, base_url):
     """nightly/<version>/ - the development builds of develop (the nightly run, or one started by hand): the
     packages a release has, named by `git describe` (v2.0.0-alpha2-14-gabc1234), and the images when that run
     made them. The NIGHTLY_KEEP newest by publish time are kept; each folder gets release.json + SHA256SUMS,
-    nightly/latest.json is the newest. An installed launcher's update check never reads this - it stays on
+    nightly/latest.json is the newest with packages. An installed launcher's update check never reads this - it stays on
     releases/ (latest.json, unstable.json)."""
     root = os.path.join(repo, "nightly")
     if not os.path.isdir(root):
@@ -855,7 +859,11 @@ def index_nightly(repo, base_url):
         return any(IMAGE_RE.match(os.path.basename(p)) or PC_IMAGE_RE.match(os.path.basename(p))
                    for p in data_files(folder))
 
-    keep = nightly_folders_to_keep(folders, has_images)
+    def has_packages(folder):
+        return any(any(pattern.match(os.path.basename(p)) for _, pattern, _ in PACKAGE_KINDS)
+                   for p in data_files(folder))
+
+    keep = nightly_folders_to_keep(folders, has_images, has_packages)
     prune([f for f in folders if f not in keep], [], "development build")
     builds = []
     for folder in keep:
@@ -888,9 +896,12 @@ def index_nightly(repo, base_url):
         }
         write_json(os.path.join(folder, "release.json"), build)
         builds.append(build)
+    # what the launcher's update and the installers read: the newest build that has packages (one still being
+    # published may have only its images so far)
     path = os.path.join(root, "latest.json")
-    if builds:
-        write_json(path, builds[-1])
+    with_files = [b for b in builds if b["files"]] or builds
+    if with_files:
+        write_json(path, with_files[-1])
     elif os.path.isfile(path):
         os.remove(path)
     # the newest Pi images as Imager's third repository (the image job publishes make_rpi_image.sh's
