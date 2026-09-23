@@ -1,0 +1,50 @@
+# Withdraw a bad testing or nightly build from the download site (or restore one): tools/repo_withdraw.sh
+# moves its folders into the hidden .withdrawn/ (never deletes), then the catalogs and the page are
+# regenerated so each channel falls back to what is left. What the admin panel's "Withdraw" button runs
+# (docs/admin-panel-plan.md in autobleem-main). Self-hosted: the site is the build server's directory.
+# Gated by AB_CI_ENABLED.
+name: withdraw
+
+on:
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: which channel the build is on
+        type: choice
+        options: [nightly, testing]
+      version:
+        description: the build's version (its folder name on the site)
+        type: string
+      restore:
+        description: put a withdrawn build back instead
+        type: boolean
+        default: false
+
+concurrency:
+  group: site-page
+  cancel-in-progress: false
+
+jobs:
+  withdraw:
+    if: vars.AB_CI_ENABLED == 'true'
+    runs-on: [self-hosted, linux, x64]
+    env:
+      AB_REPO_DIR: /home/claude/autobleem-repo
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the page generator's merge base
+      - name: Withdraw and republish
+        env:
+          KIND: ${{ inputs.kind }}
+          VERSION: ${{ inputs.version }}
+          RESTORE: ${{ inputs.restore }}
+        run: |
+          set -euo pipefail
+          args=("$KIND" "$VERSION")
+          [ "$RESTORE" = true ] && args=(restore "${args[@]}")
+          docker run --rm \
+            -v "$PWD:$PWD" -w "$PWD" -v "$AB_REPO_DIR:$AB_REPO_DIR" -e REPO_DIR="$AB_REPO_DIR" \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+            ghcr.io/autobleem2/autobleem-build:develop \
+            bash -c 'bash tools/repo_withdraw.sh "$@" && bash tools/repo_publish.sh --local index' _ "${args[@]}"

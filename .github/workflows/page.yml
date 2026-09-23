@@ -57,5 +57,5 @@ jobs:
           docker run --rm \
             -v "$PWD:$PWD" -w "$PWD" -v "$AB_REPO_DIR:$AB_REPO_DIR" -e REPO_DIR="$AB_REPO_DIR" \
             -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
-            ghcr.io/autobleem2/autobleem-build:latest \
+            ghcr.io/autobleem2/autobleem-build:develop \
             bash tools/repo_publish.sh --local index
