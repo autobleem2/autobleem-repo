@@ -12,6 +12,11 @@
 #
 #   REPO_DIR=/home/claude/autobleem-repo docker compose up -d      # from this directory, as the claude user
 #   docker compose logs -f                                         # the ACME exchange on the first HTTPS hit
+#
+# The admin panel (admin/README.md, the `admin` profile): its service and oauth2-proxy (the GitHub login), on
+# this compose network - Caddy routes /admin and /oauth2/ to them on the HTTPS name only.
+#
+#   docker compose --profile admin up -d --build                   # once admin/.env and admin/app-key.pem exist
 services:
   caddy:
     image: caddy:2
@@ -28,6 +33,42 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 
+  # the panel's service: the JSON API and the page (admin/)
+  admin:
+    profiles: [admin]
+    build: ../../admin
+    container_name: autobleem-admin
+    restart: unless-stopped
+    env_file: ../../admin/.env
+    environment:
+      AB_REPO_DIR: /srv/repo
+      AB_DATA_DIR: /data
+    volumes:
+      - ${REPO_DIR:-/home/claude/autobleem-repo}:/srv/repo:ro
+      - ../../admin/app-key.pem:/run/secrets/app-key.pem:ro
+      - admin_data:/data
+
+  # the GitHub login in front of it: org members only, the session a secure cookie
+  oauth2-proxy:
+    profiles: [admin]
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
+    container_name: autobleem-login
+    restart: unless-stopped
+    env_file: ../../admin/.env
+    environment:
+      OAUTH2_PROXY_PROVIDER: github
+      OAUTH2_PROXY_GITHUB_ORG: autobleem2
+      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
+      OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
+      OAUTH2_PROXY_UPSTREAMS: http://admin:8000/
+      OAUTH2_PROXY_REDIRECT_URL: https://${REPO_HOST:-autobleem.retromenele.pl}/oauth2/callback
+      OAUTH2_PROXY_REVERSE_PROXY: "true"
+      OAUTH2_PROXY_PASS_USER_HEADERS: "true"
+      OAUTH2_PROXY_COOKIE_SECURE: "true"
+      OAUTH2_PROXY_COOKIE_NAME: _ab_admin
+      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
+
 volumes:
   caddy_data:
   caddy_config:
+  admin_data:

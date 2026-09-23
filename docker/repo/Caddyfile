@@ -19,6 +19,33 @@
     header -Server
 }
 
+# The admin panel (admin/README.md) - HTTPS only. A client may never set the headers that say who is
+# logged in: they are stripped here, and only oauth2-proxy sets them again. A script's request to the API
+# with its own GitHub token as the bearer goes to the panel directly (it checks the token with GitHub); a
+# browser goes through oauth2-proxy, which does the GitHub login. Nothing answers while the `admin` compose
+# profile is not up (a 502 for /admin, the site untouched).
+(admin) {
+    @api_bearer {
+        path /admin/api/*
+        header Authorization "Bearer *"
+    }
+    handle @api_bearer {
+        request_header -X-Forwarded-User
+        request_header -X-Forwarded-Preferred-Username
+        request_header -X-Forwarded-Email
+        reverse_proxy admin:8000
+    }
+    handle /admin* {
+        request_header -X-Forwarded-User
+        request_header -X-Forwarded-Preferred-Username
+        request_header -X-Forwarded-Email
+        reverse_proxy oauth2-proxy:4180
+    }
+    handle /oauth2/* {
+        reverse_proxy oauth2-proxy:4180
+    }
+}
+
 # HTTPS, certificate from Let's Encrypt over TLS-ALPN-01 (needs only port 443 reachable at this name)
 {$REPO_HOST} {
     tls {
@@ -26,7 +53,10 @@
             disable_http_challenge
         }
     }
-    import repo
+    import admin
+    handle {
+        import repo
+    }
 }
 
 # plain HTTP - the direct address, and LAN tests
