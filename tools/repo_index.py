@@ -919,6 +919,15 @@ h3.subtab{font-size:1.15rem;color:#fff;margin:1.4rem 0 .2rem}
 body.js section.subtab{display:none}
 body.js section.subtab.active{display:block}
 body.js section.subtab h3.subtab{display:none}
+.notice{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .8rem;margin:.8rem 0 1rem;padding:.75rem 1rem;
+  border:1px solid var(--line);border-left:3px solid var(--cyan);border-radius:6px;background:rgba(79,200,255,.07)}
+.notice .label{flex-basis:100%;color:var(--dim);font-size:.88rem}
+.notice .label b{color:var(--ink);font-weight:400}
+.notice code{flex:1;min-width:0;overflow-wrap:anywhere;font-size:.9rem;padding:.35rem .6rem;background:rgba(0,0,0,.28)}
+button.copy{font:inherit;font-size:.88rem;color:var(--cyan);background:rgba(79,200,255,.08);border:1px solid var(--line);
+  border-radius:4px;padding:.3rem .9rem;cursor:pointer}
+button.copy:hover{background:rgba(79,200,255,.22);color:#fff}
+button.copy.done{color:var(--rel);border-color:var(--rel)}
 footer{color:var(--dim);font-size:.8rem;text-align:center;margin-top:2rem}
 @media (max-width:640px){
   td.when,th.when,td.size,th.size{display:none}
@@ -941,13 +950,36 @@ def page_head(title, tagline):
     e = html.escape
     return ("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-            "<title>%s</title><link rel=\"icon\" href=\"/assets/icon.png\"><style>%s</style></head><body>"
+            "<title>%s</title><link rel=\"icon\" href=\"/assets/icon.png\"><style>%s</style>%s</head><body>"
             "<header class=\"top\"><div class=\"bar\"><a class=\"brand\" href=\"/\"><img src=\"/assets/icon.png\" alt=\"\">"
             "AutoBleem 2 <span>Downloads</span></a><nav>"
             "<a href=\"/#manuals\">Manual</a><a href=\"/releases/\">All files</a>"
             "<a href=\"https://github.com/autobleem2\">GitHub</a></nav></div></header>"
             "<div class=\"hero\"><div class=\"in\"><p>%s</p><img src=\"/assets/hero.jpg\" alt=\"AutoBleem 2\"></div></div>"
-            % (e(title), PAGE_CSS, e(tagline)))
+            % (e(title), PAGE_CSS, COPY_SCRIPT, e(tagline)))
+
+
+# the Copy buttons (imager_notice): the clipboard API on the https site, a hidden textarea where it is missing
+COPY_SCRIPT = """<script>
+function abCopy(b){
+  var t=b.dataset.copy;
+  function ok(){ b.textContent='Copied'; b.classList.add('done');
+    setTimeout(function(){ b.textContent='Copy'; b.classList.remove('done'); },1800); }
+  function fallback(){ var a=document.createElement('textarea'); a.value=t; a.style.position='fixed'; a.style.opacity='0';
+    document.body.appendChild(a); a.select(); try{ document.execCommand('copy'); ok(); }catch(e){} document.body.removeChild(a); }
+  if(navigator.clipboard && window.isSecureContext){ navigator.clipboard.writeText(t).then(ok,fallback); } else { fallback(); }
+}
+</script>"""
+
+
+def imager_notice(base_url):
+    """The Raspberry Pi Imager repository address in a box of its own, with a button that copies it - the
+    one thing on the page a user has to type into another program."""
+    url = html.escape(base_url + "/rpi-imager/os_list.json")
+    return ("<div class=\"notice\"><div class=\"label\"><b>Raspberry Pi Imager repository</b> - "
+            "<i>App Options &rarr; Content Repository &rarr; Use custom URL</i></div>"
+            "<code>%s</code><button type=\"button\" class=\"copy\" data-copy=\"%s\" onclick=\"abCopy(this)\">Copy"
+            "</button></div>" % (url, url))
 
 
 def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc_cores, samples=None, psc_libs=None,
@@ -1081,10 +1113,10 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
     out.append("<h2 class=\"plat\" id=\"rpi\">Raspberry Pi</h2>")
     out.append("<div class=\"panel\"><h2>Install</h2>"
                "<p>Flash an image with <a href=\"https://www.raspberrypi.com/software/\">Raspberry Pi Imager</a> "
-               "(<i>Use custom</i>), or add this site to Imager as a repository (<i>App Options &rarr; Content "
-               "Repository</i>: <code>%s/rpi-imager/os_list.json</code>). The first boot finishes the install and "
-               "needs a network. <a href=\"/rpi-install.html\">Which image for which Pi, step by step.</a></p>"
-               % e(base_url))
+               "(<i>Use custom</i>) with a file from the table below, or add this site to Imager as a repository "
+               "and pick AutoBleem from Imager's own list. The first boot finishes the install and needs a network. "
+               "<a href=\"/rpi-install.html\">Which image for which Pi, step by step.</a></p>"
+               + imager_notice(base_url))
     rpi_titles = (("armhf", "32-bit image (Pi 2/3/4/400/Zero 2) - recommended"),
                   ("arm64", "64-bit image (Pi 3/4/5/400/Zero 2)"))
     rows = []
@@ -1353,14 +1385,14 @@ def render_rpi_install(base_url, images):
     out.append("<div class=\"panel\"><h2>Flashing the card</h2><ol>"
                "<li>In Imager, choose your Raspberry Pi model, then under <em>Operating System</em> pick "
                "<em>Use custom</em> and the downloaded <code>.img.xz</code> - or first add this site under "
-               "<em>App Options &rarr; Content Repository</em> (<code>%s/rpi-imager/os_list.json</code>) and pick "
-               "AutoBleem from the list.</li>"
+               "<em>App Options &rarr; Content Repository</em> (the address below) and pick "
+               "AutoBleem from the list.%s</li>"
                "<li>Choose the card under <em>Storage</em>.</li>"
                "<li>Say <strong>yes to customisation</strong> when Imager offers it: set a user name and password, "
                "your <strong>WiFi</strong> network and country, and enable <strong>SSH</strong>. With these preset the "
                "first boot needs no keyboard at all. (Skipping is fine too - the first boot then asks for the WiFi "
                "on the screen.)</li>"
-               "<li>Write, then put the card in the Pi and power it on.</li></ol></div>" % e(base_url))
+               "<li>Write, then put the card in the Pi and power it on.</li></ol></div>" % imager_notice(base_url))
 
     out.append("<div class=\"panel\"><h2>The first boot</h2>"
                "<p>Raspberry Pi OS starts once to apply your presets, then AutoBleem's setup takes the screen:</p><ol>"
