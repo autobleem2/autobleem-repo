@@ -162,7 +162,13 @@ EOF
 if [ "$LOCAL" -eq 1 ]; then
     mkdir -p "$REPO_DIR"
     cp -r "$STAGE"/. "$REPO_DIR"/
-    bash -c "$(remote_index)"
+    rc=0
+    bash -c "$(remote_index)" || rc=$?
+    # a CI job publishes as root in a container: hand the tree back to its owner, or the next publish from a
+    # checkout (as that user) cannot rewrite the release.json / SHA256SUMS / index.html root left behind
+    # (2026-09-23: the appliance's first alpha publish did exactly that)
+    if [ "$(id -u)" -eq 0 ]; then chown -R "$(stat -c %u:%g "$REPO_DIR")" "$REPO_DIR"; fi
+    [ "$rc" -eq 0 ] || exit "$rc"
 else
     rsync -rlt --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r "$STAGE"/ "$REPO_HOST:$REPO_DIR/"
     ssh "$REPO_HOST" "$(remote_index)"
