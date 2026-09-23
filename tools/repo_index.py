@@ -224,6 +224,18 @@ def human(size):
 #*******************************
 # releases
 #*******************************
+VERSIONED_RE = re.compile(r"-v\d+\.\d+")
+
+
+def of_version(name, version):
+    """Is a package file of this version? A name that carries no version (the oldest packages) is; one that
+    does must end in it - "-<version>.<ext>", or "-<version>-<hash>.<ext>" as the old CI named them - which
+    tells v2.0.0 from v2.0.0-alpha1 (a prefix match would not)."""
+    if not VERSIONED_RE.search(name):
+        return True
+    return re.search(r"-%s(-[0-9a-f]{7,40})?\.(zip|tar\.gz|exe|img\.xz)$" % re.escape(version), name) is not None
+
+
 def index_releases(repo, base_url):
     root = os.path.join(repo, "releases")
     releases = []
@@ -242,6 +254,12 @@ def index_releases(repo, base_url):
             # file is the release's, the older one goes - it was only ever a stand-in
             for path in data_files(folder):
                 entry = file_entry(repo, base_url, path)
+                if not of_version(entry["name"], tag):
+                    # another version's file in this folder (the old pre-release carry-over left alpha1's
+                    # Windows set in v2.0.0-alpha2/): kept, listed, never offered as this release's download -
+                    # an update would install that other version under this one's name, again and again
+                    others.append(entry)
+                    continue
                 for kind, pattern, _ in PACKAGE_KINDS:
                     if not pattern.match(entry["name"]):
                         continue
@@ -273,34 +291,12 @@ def index_releases(repo, base_url):
             }
             write_json(os.path.join(folder, "release.json"), release)
             releases.append(release)
-    # one pre-release at most: the newest; every stable release stays. A package kind the newest
-    # pre-release does not bring (a publish of the console's packages alone, the Pi's alone) is carried
-    # over from the one it replaces, so the set on the page stays whole - the packages carry their own
-    # names and versions
+    # one pre-release at most: the newest; every stable release stays. Nothing is carried over from the
+    # pre-release it replaces any more (2026-09-23): autobleem-appliance publishes every kind of a release
+    # together, and a carried package was another version's file offered under this one's name
     stable = [r for r in releases if not r["prerelease"]]
     pre = [r for r in releases if r["prerelease"]]
     if len(pre) > 1:
-        newest = pre[-1]
-        dest = os.path.join(root, newest["version"])
-        carried = False
-        for older in reversed(pre[:-1]):
-            for kind, entry in older["files"].items():
-                if kind in newest["files"]:
-                    continue
-                src = os.path.join(root, older["version"], entry["name"])
-                if not os.path.isfile(src):
-                    continue
-                print("carrying %s (%s) over from pre-release %s" % (entry["name"], kind, older["version"]))
-                for suffix in ("", ".sha256"):
-                    if os.path.isfile(src + suffix):
-                        shutil.move(src + suffix, os.path.join(dest, entry["name"] + suffix))
-                newest["files"][kind] = file_entry(repo, base_url, os.path.join(dest, entry["name"]))
-                carried = True
-        if carried:
-            with open(os.path.join(dest, "SHA256SUMS"), "w", encoding="utf-8") as f:
-                for entry in list(newest["files"].values()) + newest["other_files"]:
-                    f.write("%s  %s\n" % (entry["sha256"], entry["name"]))
-            write_json(os.path.join(dest, "release.json"), newest)
         prune([os.path.join(root, r["version"]) for r in pre[:-1]], [], "pre-release")
         pre = pre[-1:]
     for name, which in (("latest.json", stable), ("unstable.json", pre)):
