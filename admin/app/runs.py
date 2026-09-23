@@ -29,7 +29,9 @@ def summarise(repo, run, typical, now):
     started = parse_time(run.get("run_started_at"))
     elapsed = seconds(started, now) if run["status"] != "completed" else seconds(started, parse_time(run["updated_at"]))
     left = None
-    if run["status"] in ACTIVE and typical and elapsed is not None:
+    if run["status"] != "in_progress" and run["status"] in ACTIVE:
+        elapsed, left = None, typical  # waiting for a runner: all of it is still ahead
+    elif run["status"] == "in_progress" and typical and elapsed is not None:
         left = typical - elapsed  # may go negative: "longer than usual"
     return {
         "repo": repo,

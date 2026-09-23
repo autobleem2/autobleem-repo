@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoBleem Admin</title>
+<link rel="icon" href="/assets/icon.png">
+<style>
+/* the download page's look (autobleem-repo's CLAUDE.md, "The pages' look and structure") */
+@font-face{font-family:Selawik;src:url(/assets/selawik-light.ttf) format('truetype');font-weight:300;font-display:swap}
+:root{--navy:#061a3a;--panel:rgba(4,22,56,.82);--line:rgba(80,200,255,.28);--cyan:#4fc8ff;--ink:#e8f2ff;--dim:#9fb8d6;
+  --rel:#58e0a0;--pre:#ffc857;--dev:#c79bff;--warn:#ff8a65;--bad:#ff6b6b}
+*{box-sizing:border-box}
+body{margin:0;font-family:Selawik,"Segoe UI",system-ui,sans-serif;font-weight:300;color:var(--ink);line-height:1.5;
+  background:var(--navy) radial-gradient(ellipse at 50% 0,#0b3a7a 0,#071f47 45%,#040f26 100%) fixed}
+a{color:var(--cyan);text-decoration:none}a:hover{color:#fff;text-decoration:underline}
+header.top{position:sticky;top:0;z-index:5;background:rgba(4,15,38,.92);backdrop-filter:blur(6px);
+  border-bottom:1px solid var(--line)}
+header.top .bar{max-width:68rem;margin:0 auto;padding:.55rem 1rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+header.top .brand{display:flex;align-items:center;gap:.6rem;color:#fff;font-size:1.15rem;letter-spacing:.04em}
+header.top .brand img{width:30px;height:30px}
+header.top .brand span{color:var(--dim);font-size:.95rem}
+header.top nav{margin-left:auto;display:flex;gap:1rem;font-size:.95rem;align-items:center;flex-wrap:wrap}
+main{max-width:68rem;margin:0 auto 3rem;padding:0 1rem}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:1.1rem 1.3rem;margin:1rem 0}
+h2{font-weight:300;font-size:1.2rem;letter-spacing:.04em;margin:0 0 .6rem;color:var(--cyan)}
+h2 small{font-size:.75em;color:var(--dim);letter-spacing:0;margin-left:.5rem}
+p{margin:.4rem 0 .8rem}
+code{font-family:ui-monospace,Consolas,monospace;font-size:.88em;color:#fff;background:rgba(255,255,255,.07);
+  padding:.05em .35em;border-radius:3px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;margin:.4rem 0 .2rem}
+td,th{text-align:left;padding:.45rem .55rem;border-bottom:1px solid rgba(80,200,255,.12);vertical-align:middle}
+th{font-weight:300;color:var(--dim);font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;padding-top:.2rem}
+tr:last-child td{border-bottom:0}
+td small{display:block;color:var(--dim);font-size:.82rem;line-height:1.35}
+td.when,td.num{white-space:nowrap;color:var(--dim);font-size:.88em}
+.chan{display:inline-block;white-space:nowrap;font-size:.78rem;padding:.08rem .5rem;border-radius:999px;
+  border:1px solid currentColor;color:var(--dim)}
+.chan.rel{color:var(--rel)}.chan.pre{color:var(--pre)}.chan.dev{color:var(--dev)}
+.ok{color:var(--rel)}.bad{color:var(--bad)}.warn{color:var(--warn)}.dim{color:var(--dim)}
+.bar{height:6px;border-radius:3px;background:rgba(79,200,255,.12);overflow:hidden;min-width:6rem;margin-top:.25rem}
+.bar i{display:block;height:100%;background:var(--cyan)}
+.bar.late i{background:var(--warn)}
+button,select,input{font:inherit;color:var(--ink)}
+button{padding:.25rem .8rem;border:1px solid var(--line);border-radius:4px;background:rgba(79,200,255,.08);
+  cursor:pointer;white-space:nowrap}
+button:hover{background:rgba(79,200,255,.22)}
+button.danger{border-color:rgba(255,107,107,.5);background:rgba(255,107,107,.1)}
+button.danger:hover{background:rgba(255,107,107,.25)}
+button:disabled{opacity:.4;cursor:default}
+select,input[type=text]{background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:4px;padding:.22rem .5rem}
+label{white-space:nowrap;margin-right:.8rem}
+.row{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:.5rem 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:0 1rem}
+.notice{border:1px solid var(--line);border-radius:6px;padding:.6rem .8rem;margin:.6rem 0;background:rgba(4,22,56,.95)}
+.notice.bad{border-color:rgba(255,107,107,.5);background:rgba(60,16,24,.95)}
+#toast{position:fixed;right:1rem;bottom:1rem;max-width:26rem;display:none;z-index:9}
+.jobs{margin:.2rem 0 0;padding:0;list-style:none;font-size:.82rem;color:var(--dim)}
+.jobs li{margin:0}
+.actonly{display:none}
+body.can-act .actonly{display:block}
+@media (max-width:40rem){td,th{padding:.4rem .35rem}header.top nav{margin-left:0}}
+</style>
+</head>
+<body>
+<header class="top"><div class="bar">
+  <a class="brand" href="/"><img src="/assets/icon.png" alt=""> AutoBleem 2 <span>Admin</span></a>
+  <nav><span id="me" class="dim"></span><a href="/">Download page</a>
+    <button id="notif" type="button" title="Desktop notifications when a build finishes">Notify me</button>
+    <a href="/oauth2/sign_out?rd=/">Sign out</a></nav>
+</div></header>
+<main>
+  <div id="error" class="notice bad" hidden></div>
+
+  <section class="panel">
+    <h2>Building now <small id="at"></small></h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Repository</th><th>What</th><th>Running</th><th>Left</th><th></th></tr></thead>
+      <tbody id="active"><tr><td colspan="5" class="dim">Loading...</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <section class="panel">
+    <h2>Finished</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Repository</th><th>What</th><th>Result</th><th>Took</th><th>When</th><th></th></tr></thead>
+      <tbody id="recent"></tbody>
+    </table></div>
+  </section>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Channels</h2>
+      <table><tbody id="channels"></tbody></table>
+    </section>
+    <section class="panel">
+      <h2>Health</h2>
+      <table><tbody id="health"></tbody></table>
+    </section>
+  </div>
+
+  <section class="panel actonly">
+    <h2>Nightly <small>rebuilds what moved on develop, then assembles</small></h2>
+    <div class="row" id="platforms">
+      <label><input type="checkbox" value="rpi-armhf" checked> Pi 32-bit</label>
+      <label><input type="checkbox" value="rpi-arm64" checked> Pi 64-bit</label>
+      <label><input type="checkbox" value="pcusb" checked> PC stick</label>
+      <label><input type="checkbox" value="psc" checked> PlayStation Classic</label>
+      <label><input type="checkbox" value="win" checked> Windows</label>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="rebuildAll"> rebuild every component</label>
+      <label><input type="checkbox" id="nightlyDry"> dry run</label>
+      <button id="nightlyGo" type="button">Refresh nightly</button>
+    </div>
+  </section>
+
+  <section class="panel actonly">
+    <h2>Promote <small>develop to testing, a release candidate, or a release</small></h2>
+    <div class="row">
+      <select id="kind">
+        <option value="alpha">Testing - alpha</option>
+        <option value="beta">Testing - beta</option>
+        <option value="rc">Release candidate</option>
+        <option value="release">Release</option>
+      </select>
+      <input type="text" id="version" placeholder="X.Y.Z (only for a new version)" size="24">
+      <label><input type="checkbox" id="promoteDry" checked> dry run</label>
+      <span>makes <code id="nextTag">...</code></span>
+      <button id="promoteGo" type="button" class="danger">Promote</button>
+    </div>
+    <p class="dim">alpha / beta tag develop's heads; a release candidate cuts <code>release/X.Y.Z</code>; a release
+      tags it and merges it into master and back into develop. Each stage's builds are awaited, the assembly last.</p>
+    <div class="row"><button id="pageGo" type="button">Republish the download page</button></div>
+  </section>
+
+  <section class="panel">
+    <h2>Audit log</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>When</th><th>Who</th><th>What</th><th>Result</th></tr></thead>
+      <tbody id="audit"></tbody>
+    </table></div>
+  </section>
+</main>
+<div id="toast" class="notice"></div>
+
+<script>
+"use strict";
+const API = "/admin/api/";
+let canAct = false, firstStatus = true;
+const seenActive = new Set();
+
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") e.className = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v);
+  }
+  for (const k of kids.flat()) if (k !== null && k !== undefined) e.append(k.nodeType ? k : String(k));
+  return e;
+}
+function dur(s) {
+  if (s === null || s === undefined) return "";
+  s = Math.abs(s);
+  return s >= 3600 ? Math.floor(s / 3600) + "h " + Math.round(s % 3600 / 60) + "m" : Math.round(s / 60) + "m";
+}
+function when(iso) { return iso ? new Date(iso).toLocaleString() : ""; }
+function toast(text, bad) {
+  const t = document.getElementById("toast");
+  t.textContent = text; t.className = "notice" + (bad ? " bad" : ""); t.style.display = "block";
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.style.display = "none", 6000);
+}
+async function api(path, opts) {
+  const r = await fetch(API + path, Object.assign({credentials: "same-origin"}, opts || {}));
+  if (r.status === 401) { location.href = "/oauth2/start?rd=/admin/"; throw new Error("not logged in"); }
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || r.statusText);
+  return body;
+}
+function post(path, body) {
+  return api(path, {method: "POST", headers: {"Content-Type": "application/json", "X-AB-Request": "1"},
+                    body: JSON.stringify(body || {})});
+}
+async function act(label, path, body, twice) {
+  if (!confirm(label + "?")) return;
+  if (twice && !confirm("Really: " + label + "?")) return;
+  try { toast((await post(path, body)).result); refresh(); loadAudit(); }
+  catch (e) { toast(e.message, true); }
+}
+function logs(r) { return el("a", {href: r.url, target: "_blank", rel: "noopener"}, "Logs"); }
+function sub(r) { return el("small", {}, (r.branch || "") + " · " + (r.title || "")); }
+
+function renderStatus(s) {
+  document.getElementById("at").textContent = "as of " + new Date(s.at).toLocaleTimeString();
+  const active = document.getElementById("active"); active.replaceChildren();
+  if (!s.active.length) active.append(el("tr", {}, el("td", {colspan: 5, class: "dim"}, "Nothing is building.")));
+  for (const r of s.active) {
+    const pct = r.typical ? Math.min(100, Math.round(100 * r.elapsed / r.typical)) : 0;
+    const late = r.left !== null && r.left < 0;
+    const jobs = (r.jobs || []).map(j => el("li", {}, (j.status === "completed" ? "✓ " :
+      j.status === "in_progress" ? "▶ " : "… ") + j.name));
+    active.append(el("tr", {},
+      el("td", {}, r.repo),
+      el("td", {}, r.workflow, sub(r), el("ul", {class: "jobs"}, jobs)),
+      el("td", {class: "num"}, r.status === "in_progress" ? dur(r.elapsed) : r.status,
+         r.typical ? el("div", {class: "bar" + (late ? " late" : "")}, el("i", {style: "width:" + pct + "%"})) : null),
+      el("td", {class: "num"}, r.left === null ? "?" : late ? dur(r.left) + " over" : "~" + dur(r.left)),
+      el("td", {}, logs(r), " ", canAct ? el("button", {type: "button", class: "danger",
+        onclick: () => act("Cancel " + r.repo + " " + r.workflow, "runs/" + r.repo + "/" + r.id + "/cancel")},
+        "Cancel") : null)));
+  }
+  const recent = document.getElementById("recent"); recent.replaceChildren();
+  for (const r of s.recent) {
+    const c = r.conclusion;
+    recent.append(el("tr", {}, el("td", {}, r.repo), el("td", {}, r.workflow, sub(r)),
+      el("td", {}, el("span", {class: c === "success" ? "ok" : c === "failure" ? "bad" : "warn"}, c || r.status)),
+      el("td", {class: "num"}, dur(r.elapsed)), el("td", {class: "when"}, when(r.updated)),
+      el("td", {}, logs(r), " ", canAct && c !== "success" ? el("button", {type: "button",
+        onclick: () => act("Re-run the failed jobs of " + r.repo + " " + r.workflow,
+                           "runs/" + r.repo + "/" + r.id + "/rerun", {failed_only: true})}, "Re-run") : null)));
+  }
+  // a build seen running that has finished: a desktop notification (not for what finished before the page opened)
+  const running = new Set(s.active.map(r => r.repo + "/" + r.id));
+  if (!firstStatus) {
+    for (const r of s.recent) {
+      const key = r.repo + "/" + r.id;
+      if (seenActive.has(key) && !running.has(key)) {
+        seenActive.delete(key);
+        if (window.Notification && Notification.permission === "granted")
+          new Notification(r.repo + ": " + (r.conclusion || r.status),
+                           {body: r.workflow + " · " + (r.branch || ""), icon: "/assets/icon.png"});
+      }
+    }
+  }
+  running.forEach(k => seenActive.add(k));
+  firstStatus = false;
+  const err = document.getElementById("error");
+  err.hidden = !s.errors.length;
+  err.textContent = s.errors.map(e => e.repo + ": " + e.error).join(" — ");
+}
+
+function renderChannels(c) {
+  const tb = document.getElementById("channels"); tb.replaceChildren();
+  for (const [name, cls] of [["release", "rel"], ["testing", "pre"], ["nightly", "dev"]]) {
+    const ch = c[name];
+    const facts = ch ? [ch.packages.length + " packages", ch.images.length ? ch.images.length + " images" : null,
+                        ch.date].filter(Boolean).join(" · ") : null;
+    tb.append(el("tr", {},
+      el("td", {}, el("span", {class: "chan " + cls}, name)),
+      el("td", {}, ch ? el("code", {}, ch.version) : el("span", {class: "dim"}, "nothing yet"),
+         facts ? el("small", {}, facts) : null),
+      el("td", {}, canAct && ch && name !== "release" ? el("button", {type: "button", class: "danger",
+        onclick: () => act("Withdraw the " + name + " build " + ch.version + " from the site", "withdraw",
+                           {kind: name, version: ch.version}, true)}, "Withdraw") : null)));
+  }
+}
+function renderHealth(h) {
+  const tb = document.getElementById("health"); tb.replaceChildren();
+  const runners = Array.isArray(h.runners) ? h.runners : [];
+  if (!runners.length) tb.append(el("tr", {}, el("td", {}, "Runners"),
+    el("td", {class: "warn"}, h.runners && h.runners.error ? h.runners.error : "none registered")));
+  for (const r of runners) tb.append(el("tr", {}, el("td", {}, "Runner " + r.name),
+    el("td", {class: r.status === "online" ? "ok" : "bad"}, r.status + (r.busy ? " · busy" : " · idle"))));
+  const d = h.disk || {};
+  tb.append(el("tr", {}, el("td", {}, "Site disk"), el("td", {class: d.used_pct > 90 ? "bad" : ""},
+    d.error ? d.error : (d.free / 1e9).toFixed(1) + " GB free (" + d.used_pct + "% used)")));
+  const img = h.image || {};
+  for (const tag of ["develop", "latest"]) tb.append(el("tr", {}, el("td", {}, "Build image :" + tag),
+    el("td", {class: "dim"}, img.error ? img.error : when(img[tag]) || "not published")));
+}
+function renderAudit(a) {
+  const tb = document.getElementById("audit"); tb.replaceChildren();
+  if (!a.length) tb.append(el("tr", {}, el("td", {colspan: 4, class: "dim"}, "Nothing yet.")));
+  for (const e of a.slice(0, 40)) tb.append(el("tr", {}, el("td", {class: "when"}, when(e.at)),
+    el("td", {}, e.user, el("small", {}, e.via)), el("td", {}, e.action, el("small", {}, JSON.stringify(e.params))),
+    el("td", {class: /^(refused|failed)/.test(e.result) ? "bad" : ""}, e.result)));
+}
+
+async function refresh() { try { renderStatus(await api("status")); } catch (e) { toast(e.message, true); } }
+async function loadSlow() {
+  try { renderChannels(await api("channels")); } catch (e) { toast(e.message, true); }
+  try { renderHealth(await api("health")); } catch (e) { toast(e.message, true); }
+}
+async function loadAudit() { try { renderAudit(await api("audit")); } catch (e) { toast(e.message, true); } }
+async function preview() {
+  const kind = document.getElementById("kind").value, version = document.getElementById("version").value.trim();
+  const out = document.getElementById("nextTag"), go = document.getElementById("promoteGo");
+  try {
+    out.textContent = (await api("promote/preview?kind=" + kind + "&version=" + encodeURIComponent(version))).tag;
+    go.disabled = false;
+  } catch (e) { out.textContent = e.message; go.disabled = true; }
+}
+
+async function start() {
+  const me = await api("me");
+  canAct = me.can_act;
+  document.body.classList.toggle("can-act", canAct);
+  document.getElementById("me").textContent = me.login + (canAct ? " · release team" : " · read only");
+  document.getElementById("notif").onclick = () => window.Notification && Notification.requestPermission()
+    .then(p => toast(p === "granted" ? "Desktop notifications are on while this page is open."
+                                     : "Notifications were not allowed."));
+  document.getElementById("nightlyGo").onclick = () => {
+    const platforms = [...document.querySelectorAll("#platforms input:checked")].map(i => i.value);
+    act("Refresh the nightly for " + (platforms.join(", ") || "every platform"), "nightly", {platforms,
+        rebuild_all: document.getElementById("rebuildAll").checked,
+        dry_run: document.getElementById("nightlyDry").checked});
+  };
+  document.getElementById("kind").onchange = preview;
+  document.getElementById("version").oninput = () => { clearTimeout(preview.t); preview.t = setTimeout(preview, 400); };
+  document.getElementById("promoteGo").onclick = () => {
+    const dry = document.getElementById("promoteDry").checked;
+    act("Promote to " + document.getElementById("nextTag").textContent + (dry ? " (dry run)" : ""), "promote",
+        {kind: document.getElementById("kind").value, version: document.getElementById("version").value.trim(),
+         dry_run: dry}, !dry);
+  };
+  document.getElementById("pageGo").onclick = () => act("Republish the download page", "page");
+  if (canAct) preview();
+  refresh(); loadSlow(); loadAudit();
+  setInterval(refresh, 15000); setInterval(loadSlow, 60000); setInterval(loadAudit, 60000);
+}
+start().catch(e => toast(e.message, true));
+</script>
+</body>
+</html>
