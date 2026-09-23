@@ -653,6 +653,15 @@ def pcsx_version_key(version):
     every plain r26-N-g... build: the tag was cut after them, and once it exists every later describe
     carries its label (the label, then the commits past it). Before this, r26-alpha1 keyed as (26, 0), lost
     to r26-60 and the index deleted the alpha it had just been given."""
+    # the unified release tags every AutoBleem 2 repository is cut with since v2.0.0-alpha1 (v2.0.0-alpha2,
+    # v2.1.0, ...): above every legacy build (a first key no date or r-number reaches), and among themselves
+    # in semver order - a pre-release below its release, alpha2 below alpha10 below beta1. Before this they
+    # keyed as (0, ...), lowest of all, and the index deleted the version it had just been given.
+    m = re.match(r"^v(\d+)\.(\d+)\.(\d+)(?:-([a-z]+)(\d*)(.*))?$", version)
+    if m:
+        pre = m.group(4)
+        return (10 ** 9, (int(m.group(1)), int(m.group(2)), int(m.group(3))), 0 if pre else 1,
+                (pre or "", int(m.group(5) or 0), m.group(6) or ""), PUBLISHED_AT.get(version, 0), version)
     m = re.match(r"^r(\d+)(?:-(\d+)-g[0-9a-f]+)?$", version)
     if m:
         return (int(m.group(1)), 0, "", int(m.group(2) or 0), PUBLISHED_AT.get(version, 0), version)
