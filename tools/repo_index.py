@@ -57,7 +57,7 @@ INDEX_VERSION = 43
 # the release packages, by the name they carry (tools/make_*_package.sh, ci/build.sh)
 PACKAGE_KINDS = [
     ("installer", re.compile(r"^AutoBleemInstaller-.*\.zip$"),
-     "PlayStation Classic installer for Windows (the program and the stick's file system)"),
+     "PlayStation Classic installer for Windows (downloads the stick's file system from the channel picked in it)"),
     ("psc", re.compile(r"^autobleem-psc-.*\.zip$"), "PlayStation Classic (USB stick zip)"),
     ("psc-fs", re.compile(r"^autobleem-psc-.*\.tar\.gz$"),
      "PlayStation Classic, the stick's file system for the installer (no RetroArch and no cover databases - "
@@ -71,6 +71,8 @@ PACKAGE_KINDS = [
      "Windows, the same program as a portable folder (dataroot.txt names the data folder)"),
     ("win", re.compile(r"^autobleem-win-(?!product).*\.zip$"), "Windows (launcher, for a look on a PC)"),
     ("updateroms", re.compile(r"^UpdateRoms-.*\.zip$"), "UpdateRoms for Windows (scan a stick or card on a PC)"),
+    ("flasher", re.compile(r"^AutoBleemFlasher-.*\.zip$"),
+     "PC USB stick flasher for Windows (downloads the stick image of a channel and writes it)"),
 ]
 IMAGE_RE = re.compile(r"^autobleem-(?P<version>.+)-rpi-(?P<arch>armhf|arm64)\.img\.xz$")
 # the PC stick's image (tools/make_pc_image.sh), under pc/images/<version>/
@@ -668,10 +670,20 @@ def index_pc_images(repo, base_url):
         keep = newest_of(pre)
         prune([os.path.join(root, v) for v in pre if v != keep], [], "pre-release PC image set")
         versions = {v: f for v, f in versions.items() if v == keep or v in stable}
-    newest = newest_of(stable) or newest_of(versions)
-    latest = {"version": newest, "prerelease": is_prerelease(newest)}
-    latest.update(versions[newest])
-    write_json(os.path.join(root, "latest.json"), latest)
+    def catalog(name, version):
+        path = os.path.join(root, name)
+        if version:
+            entry = {"version": version, "prerelease": is_prerelease(version)}
+            entry.update(versions[version])
+            write_json(path, entry)
+        elif os.path.isfile(path):
+            os.remove(path)
+
+    # latest.json (the newest stable, else the pre-release) for what read it before the channels; release.json
+    # and testing.json for the flasher's channel picker (2026-09-23) - the nightly's image is nightly/latest.json's
+    catalog("latest.json", newest_of(stable) or newest_of(versions))
+    catalog("release.json", newest_of(stable))
+    catalog("testing.json", newest_of([v for v in versions if is_prerelease(v)]))
     return versions
 
 
@@ -1203,13 +1215,14 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
     out.append("<h2 class=\"plat\" id=\"pc\">PC</h2>")
     pc = pc or {}
     out.append("<h3 class=\"subtab\" id=\"pc-usb\">PC USB stick</h3>")
+    rows = release_rows(("flasher",), {"flasher": "Flasher for Windows"})
+    how = ("on Windows with the flasher below (it downloads the image of the channel you pick), elsewhere with "
+           "<code>dd</code> or balenaEtcher" if rows else "Rufus in DD mode, balenaEtcher, <code>dd</code>")
     out.append("<div class=\"panel\"><h2>Install</h2>"
-               "<p>A 32-bit Debian appliance on a USB stick: write the image to a stick of 8 GB or more (Rufus in DD "
-               "mode, balenaEtcher, <code>dd</code>), boot the PC from it (BIOS or UEFI, Secure Boot off); the first "
-               "boot sets AutoBleem up and the rest of the stick becomes the games partition. "
-               "<a href=\"/pc-install.html\">Step by step.</a></p>")
+               "<p>A 32-bit Debian appliance on a USB stick: write the image to a stick of 8 GB or more (%s) and "
+               "boot the PC from it (BIOS or UEFI, Secure Boot off); the first boot sets AutoBleem up and the rest "
+               "of the stick becomes the games partition. <a href=\"/pc-install.html\">Step by step.</a></p>" % how)
     pc_images = pc.get("images") or {}
-    rows = []
     for version in sorted(pc_images, key=version_key, reverse=True):
         for arch, f in sorted(pc_images[version].items()):
             rows.append(row("Stick image (%s)" % arch, f, version, "pre" if is_prerelease(version) else "rel"))
@@ -1534,13 +1547,16 @@ def render_pc_install(base_url, images):
                "the processor's own graphics.</p></div>")
 
     out.append("<div class=\"panel\"><h2>Writing the stick</h2><ol>"
-               "<li>Download the image above (a <code>.img.xz</code> file).</li>"
-               "<li><strong>Windows:</strong> <a href=\"https://rufus.ie/\">Rufus</a> - pick the stick, pick the "
-               "image (Rufus reads .img.xz as it is), and when it asks, choose <em>Write in DD Image mode</em>. "
-               "<a href=\"https://etcher.balena.io/\">balenaEtcher</a> works as well, on every system.</li>"
-               "<li><strong>Linux / macOS:</strong> <code>xzcat autobleem-*.img.xz | sudo dd of=/dev/sdX bs=4M "
-               "status=progress</code> (the stick's device, not a partition of it - everything on the stick is "
-               "erased).</li></ol></div>")
+               "<li><strong>Windows:</strong> the <strong>AutoBleem Flasher</strong> (on the download page, next "
+               "to the image): unzip it and run <code>AutoBleemFlasher.exe</code> - it asks for administrator "
+               "rights, since it writes a whole disk. Pick the channel (Release, Testing or Nightly) and the stick; "
+               "it downloads that channel's image, checks it, writes it and reads it back. Only removable disks are "
+               "offered, and everything on the chosen one is erased. <a href=\"https://rufus.ie/\">Rufus</a> (in "
+               "<em>DD Image mode</em>) and <a href=\"https://etcher.balena.io/\">balenaEtcher</a> work as well, "
+               "with an image you downloaded yourself.</li>"
+               "<li><strong>Linux / macOS:</strong> download the image (a <code>.img.xz</code> file), then "
+               "<code>xzcat autobleem-*.img.xz | sudo dd of=/dev/sdX bs=4M status=progress</code> (the stick's "
+               "device, not a partition of it - everything on the stick is erased).</li></ol></div>")
 
     out.append("<div class=\"panel\"><h2>Booting from it</h2>"
                "<p>Plug the stick in and start the PC from it: the boot menu key at power-on (F12, F11, F8 or Esc "
