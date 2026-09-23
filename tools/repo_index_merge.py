@@ -130,6 +130,13 @@ def main():
         if theirs_rev and mine_rev and theirs_rev != mine_rev and \
                 git(["merge-base", "--is-ancestor", theirs_rev, mine_rev], tree) is not None:
             base, base_rev, newer_base, newer_rev = theirs_base, theirs_rev, mine_base, mine_rev
+        elif theirs_rev and git(["cat-file", "-e", theirs_rev + "^{commit}"], tree) is None:
+            # the repository's base is from a history this checkout does not have - the launcher's, from
+            # before the tooling moved to autobleem-repo, or any shallow clone (CI): its stored file is then
+            # the only base known to be common. Taking mine_base here would, for a change committed in this
+            # checkout, make the base the changed file itself - "nothing changed on this side" - and the
+            # repository's copy won: a committed repo_index.py fix was silently dropped (2026-09-23).
+            base, base_rev, newer_base, newer_rev = theirs_base, theirs_rev, mine_base, mine_rev
         else:
             base, base_rev, newer_base, newer_rev = mine_base, mine_rev, theirs_base, theirs_rev
     elif theirs_base is not None:
