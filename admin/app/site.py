@@ -73,7 +73,7 @@ class Health:
         return self.gh.cached("image", 300, ask)
 
     def report(self):
-        out = {"disk": disk(self.settings.repo_dir)}
+        out = {"disk": dict(disk(self.settings.repo_dir), low_below=self.settings.low_disk_gb * 10 ** 9)}
         for name, fn in (("runners", self.runners), ("image", self.image)):
             try:
                 out[name] = fn()

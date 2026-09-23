@@ -175,3 +175,16 @@ def test_notifier_reports_a_finished_run_once(tmp_path):
     again.seen_active.add(("autobleem", 1))
     again.tick()
     assert len(sent) == 1
+
+
+def test_notifier_disk_alert_once_and_recovery(tmp_path, monkeypatch):
+    from app import notify
+    settings = Settings(data_dir=str(tmp_path), repos=["autobleem"], telegram_token="t", telegram_chat="c",
+                        low_disk_gb=10)
+    sent = []
+    n = Notifier(Runs(FakeGitHub(), settings), settings, send=sent.append)
+    for free_gb, count in ((20, 0), (9, 1), (5, 1), (11, 1), (13, 2), (8, 3)):
+        monkeypatch.setattr(notify, "disk_free", lambda path, f=free_gb: f * 1e9)
+        n.check_disk()
+        assert len(sent) == count, (free_gb, sent)
+    assert "9.0 GB free" in sent[0] and "again" in sent[1]

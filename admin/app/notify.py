@@ -1,12 +1,21 @@
 """Telegram: a message when a run finishes - success, failure or cancelled - with how long it took and its
 link. A background thread looks at the same run lists the page shows; the runs already reported are
-remembered on disk, so a restart does not repeat them."""
+remembered on disk, so a restart does not repeat them. And one message when the build server's disk runs low
+(one more when it has room again)."""
 import json
 import os
+import shutil
 import threading
 import time
 
 import httpx
+
+
+def disk_free(path):
+    try:
+        return shutil.disk_usage(path).free
+    except OSError:
+        return None
 
 ICON = {"success": "✅", "failure": "❌", "cancelled": "⛔"}
 
@@ -24,6 +33,7 @@ class Notifier:
         self.path = os.path.join(settings.data_dir, "notified.json")
         self.send = send or self.telegram
         self.seen_active = set()
+        self.disk_low = False
         self.notified = self._load()
         self.started = time.time()
 
@@ -64,6 +74,22 @@ class Notifier:
                 sent = True
         if sent:
             self._save()
+        self.check_disk()
+
+    def check_disk(self):
+        """one message when the build server's free space drops under low_disk_gb, one more when it is back
+        above it (+2 GB, so a disk hovering at the line does not chatter)"""
+        free = disk_free(self.settings.repo_dir)
+        if free is None:
+            return
+        limit = self.settings.low_disk_gb * 1e9
+        if not self.disk_low and free < limit:
+            self.disk_low = True
+            self.send("⚠️ Build server disk: %.1f GB free (under %d GB). A full disk stops the runner and every "
+                      "publish - clean up before the next build." % (free / 1e9, self.settings.low_disk_gb))
+        elif self.disk_low and free > limit + 2e9:
+            self.disk_low = False
+            self.send("✅ Build server disk: %.1f GB free again." % (free / 1e9))
 
     def run_forever(self):
         while True:

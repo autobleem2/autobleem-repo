@@ -30,6 +30,8 @@ class Settings:
     telegram_chat: str = os.environ.get("AB_TELEGRAM_CHAT", "")
     # how long a repository's run list is reused before GitHub is asked again (seconds)
     runs_ttl: int = int(os.environ.get("AB_RUNS_TTL", "30"))
+    # under this much free space (GB) on the build server the page turns red and Telegram says so once
+    low_disk_gb: int = int(os.environ.get("AB_LOW_DISK_GB", "10"))
 
     def private_key(self):
         if self.app_key:

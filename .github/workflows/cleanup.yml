@@ -1,0 +1,42 @@
+# The build server's nightly cleanup (tools/server_cleanup.sh): old build image tags, dangling images, stopped
+# containers, stale build cache - then the page regenerated, which also prunes the site's old nightlies down
+# to NIGHTLY_KEEP (tools/repo_index.py). Before the nightly assembly (autobleem-appliance, 03:17 UTC), so it
+# begin with the room. Self-hosted: it is that machine's Docker. Gated by AB_CI_ENABLED.
+name: cleanup
+
+on:
+  schedule:
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: only list what would be removed
+        type: boolean
+        default: false
+
+concurrency:
+  group: site-page
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    if: vars.AB_CI_ENABLED == 'true'
+    runs-on: [self-hosted, linux, x64]
+    env:
+      AB_REPO_DIR: /home/claude/autobleem-repo
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the page generator's merge base
+      - name: Docker
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: bash tools/server_cleanup.sh $([ "$DRY_RUN" = true ] && echo --dry-run)
+      - name: The site's old nightlies (the page regenerated)
+        if: inputs.dry_run != true
+        run: |
+          docker run --rm \
+            -v "$PWD:$PWD" -w "$PWD" -v "$AB_REPO_DIR:$AB_REPO_DIR" -e REPO_DIR="$AB_REPO_DIR" \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+            ghcr.io/autobleem2/autobleem-build:develop \
+            bash tools/repo_publish.sh --local index

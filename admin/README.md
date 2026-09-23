@@ -47,3 +47,11 @@ curl -H "Authorization: Bearer $(gh auth token)" -H "Content-Type: application/j
 `GET` `me`, `status`, `channels`, `health`, `audit`, `promote/preview?kind=alpha&version=` ; `POST` `nightly`,
 `promote`, `runs/<repo>/<id>/cancel`, `runs/<repo>/<id>/rerun`, `withdraw`, `page`. A browser's `POST` also
 needs the header `X-AB-Request: 1` (the page sends it; a cross-site form cannot).
+
+## The build server's disk
+
+`.github/workflows/cleanup.yml` runs every night at 01:30 UTC, before the nightly assembly (and on demand, with a
+dry run): `tools/server_cleanup.sh` removes the old `autobleem-build:<sha>` image tags, dangling images, stopped
+containers and build cache unused for three days, then the page is regenerated, which prunes the site's
+nightlies to one (`NIGHTLY_KEEP` in `tools/repo_index.py`; the one before stays while the newest has no images
+yet). The panel's Health row turns red under `AB_LOW_DISK_GB` (10) free, and Telegram says so once.

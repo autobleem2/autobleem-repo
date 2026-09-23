@@ -39,9 +39,10 @@ td.when,td.num{white-space:nowrap;color:var(--dim);font-size:.88em}
   border:1px solid currentColor;color:var(--dim)}
 .chan.rel{color:var(--rel)}.chan.pre{color:var(--pre)}.chan.dev{color:var(--dev)}
 .ok{color:var(--rel)}.bad{color:var(--bad)}.warn{color:var(--warn)}.dim{color:var(--dim)}
-.bar{height:6px;border-radius:3px;background:rgba(79,200,255,.12);overflow:hidden;min-width:6rem;margin-top:.25rem}
-.bar i{display:block;height:100%;background:var(--cyan)}
-.bar.late i{background:var(--warn)}
+/* the time-left bar - not .bar, which is the header's row */
+.progress{height:6px;border-radius:3px;background:rgba(79,200,255,.12);overflow:hidden;min-width:6rem;margin-top:.25rem}
+.progress i{display:block;height:100%;background:var(--cyan)}
+.progress.late i{background:var(--warn)}
 button,select,input{font:inherit;color:var(--ink)}
 button{padding:.25rem .8rem;border:1px solid var(--line);border-radius:4px;background:rgba(79,200,255,.08);
   cursor:pointer;white-space:nowrap}
@@ -72,6 +73,7 @@ body.can-act .actonly{display:block}
 </div></header>
 <main>
   <div id="error" class="notice bad" hidden></div>
+  <div id="diskwarn" class="notice bad" hidden></div>
 
   <section class="panel">
     <h2>Building now <small id="at"></small></h2>
@@ -147,8 +149,7 @@ body.can-act .actonly{display:block}
 
 <script>
 "use strict";
-const API = "/admin/api/";
-let canAct = false, firstStatus = true;
+const API = "/admin/api/";let canAct = false, firstStatus = true;
 const seenActive = new Set();
 
 function el(tag, attrs, ...kids) {
@@ -198,13 +199,15 @@ function renderStatus(s) {
   for (const r of s.active) {
     const pct = r.typical ? Math.min(100, Math.round(100 * r.elapsed / r.typical)) : 0;
     const late = r.left !== null && r.left < 0;
-    const jobs = (r.jobs || []).map(j => el("li", {}, (j.status === "completed" ? "✓ " :
-      j.status === "in_progress" ? "▶ " : "… ") + j.name));
+    const mark = j => j.status !== "completed" ? (j.status === "in_progress" ? "▶ " : "… ")
+      : j.conclusion === "success" ? "✓ " : j.conclusion === "skipped" ? "– " : "✗ ";
+    const jobs = (r.jobs || []).map(j => el("li", {class: j.status === "completed" && j.conclusion !== "success" &&
+      j.conclusion !== "skipped" ? "bad" : ""}, mark(j) + j.name));
     active.append(el("tr", {},
       el("td", {}, r.repo),
       el("td", {}, r.workflow, sub(r), el("ul", {class: "jobs"}, jobs)),
       el("td", {class: "num"}, r.status === "in_progress" ? dur(r.elapsed) : r.status,
-         r.typical ? el("div", {class: "bar" + (late ? " late" : "")}, el("i", {style: "width:" + pct + "%"})) : null),
+         r.typical ? el("div", {class: "progress" + (late ? " late" : "")}, el("i", {style: "width:" + pct + "%"})) : null),
       el("td", {class: "num"}, r.left === null ? "?" : late ? dur(r.left) + " over" : "~" + dur(r.left)),
       el("td", {}, logs(r), " ", canAct ? el("button", {type: "button", class: "danger",
         onclick: () => act("Cancel " + r.repo + " " + r.workflow, "runs/" + r.repo + "/" + r.id + "/cancel")},
@@ -263,8 +266,13 @@ function renderHealth(h) {
   for (const r of runners) tb.append(el("tr", {}, el("td", {}, "Runner " + r.name),
     el("td", {class: r.status === "online" ? "ok" : "bad"}, r.status + (r.busy ? " · busy" : " · idle"))));
   const d = h.disk || {};
-  tb.append(el("tr", {}, el("td", {}, "Site disk"), el("td", {class: d.used_pct > 90 ? "bad" : ""},
+  const low = !d.error && d.free < (d.low_below || 10e9); // AB_LOW_DISK_GB, the Telegram alert's line too
+  tb.append(el("tr", {}, el("td", {}, "Build server disk"), el("td", {class: low ? "bad" : ""},
     d.error ? d.error : (d.free / 1e9).toFixed(1) + " GB free (" + d.used_pct + "% used)")));
+  const warn = document.getElementById("diskwarn");
+  warn.hidden = !low;
+  warn.textContent = low ? "The build server has only " + (d.free / 1e9).toFixed(1) + " GB free - an image build " +
+    "needs several GB and a full disk stops the runner and every publish. Free space before the next build." : "";
   const img = h.image || {};
   for (const tag of ["develop", "latest"]) tb.append(el("tr", {}, el("td", {}, "Build image :" + tag),
     el("td", {class: "dim"}, img.error ? img.error : when(img[tag]) || "not published")));

@@ -818,7 +818,20 @@ def index_manuals(repo, base_url):
 #*******************************
 # development builds
 #*******************************
-NIGHTLY_KEEP = 3
+# one development build on the site (the owner's call, 2026-09-23 - the build server's disk ran full); an older
+# one stays only while the newest has no images yet (a run publishes its packages ~30 min before its images)
+NIGHTLY_KEEP = 1
+
+
+def nightly_folders_to_keep(folders, has_images):
+    """The newest NIGHTLY_KEEP of `folders` (oldest first), plus the newest older one with images while none of
+    those has any - so the site and Imager's nightly list are never without images between two publishes."""
+    keep = folders[-NIGHTLY_KEEP:]
+    if keep and not any(has_images(f) for f in keep):
+        older = [f for f in folders[:-NIGHTLY_KEEP] if has_images(f)]
+        if older:
+            keep = [older[-1]] + keep
+    return keep
 
 
 def index_nightly(repo, base_url):
@@ -838,9 +851,14 @@ def index_nightly(repo, base_url):
 
     folders = sorted((os.path.join(root, v) for v in os.listdir(root) if os.path.isdir(os.path.join(root, v))),
                      key=published)
-    prune(folders[:-NIGHTLY_KEEP], [], "development build")
+    def has_images(folder):
+        return any(IMAGE_RE.match(os.path.basename(p)) or PC_IMAGE_RE.match(os.path.basename(p))
+                   for p in data_files(folder))
+
+    keep = nightly_folders_to_keep(folders, has_images)
+    prune([f for f in folders if f not in keep], [], "development build")
     builds = []
-    for folder in folders[-NIGHTLY_KEEP:]:
+    for folder in keep:
         files, images, others = {}, {}, []
         for path in data_files(folder):
             entry = file_entry(repo, base_url, path)
@@ -875,9 +893,10 @@ def index_nightly(repo, base_url):
         write_json(path, builds[-1])
     elif os.path.isfile(path):
         os.remove(path)
-    # the newest build's Pi images as Imager's third repository (the image job publishes make_rpi_image.sh's
-    # rpi_imager_repo.json next to them)
-    newest = builds[-1] if builds else None
+    # the newest Pi images as Imager's third repository (the image job publishes make_rpi_image.sh's
+    # rpi_imager_repo.json next to them) - from the newest build that has them, see nightly_folders_to_keep
+    with_images = [b for b in builds if any(a in ("armhf", "arm64") for a in b["images"])]
+    newest = with_images[-1] if with_images else None
     write_imager_list(repo, base_url, "os_list-nightly.json",
                       os.path.join(root, newest["version"], "rpi_imager_repo.json") if newest else None,
                       {a: f for a, f in (newest or {}).get("images", {}).items() if a in ("armhf", "arm64")},
