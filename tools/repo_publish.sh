@@ -38,6 +38,16 @@
 #   tools/repo_publish.sh db db/covers*.db                                     -> db/
 #   tools/repo_publish.sh assets                                               -> assets/ (tools/repo_assets.py)
 #   tools/repo_publish.sh index                                                just regenerate the index
+#   tools/repo_publish.sh --partial nightly <version> FILES...                 part of a development build that is still
+#                                                                                 being published (each image as it is
+#                                                                                 built, then the packages): the files go
+#                                                                                 into nightly/<version>/ with a
+#                                                                                 .incomplete marker and the index is NOT
+#                                                                                 run - repo_index.py leaves a marked
+#                                                                                 folder out, so the previous nightly
+#                                                                                 stays whole. The run's last publish,
+#                                                                                 a plain `nightly <version> ...`, takes
+#                                                                                 the marker away and indexes.
 #
 # The page generator travels with every publish, three-way merged with the repository's copy (see
 # tools/repo_index_merge.py) - never copied over it.
@@ -57,13 +67,15 @@ REPO_HOST="${REPO_HOST:-psc-build}"
 REPO_DIR="${REPO_DIR:-/home/claude/autobleem-repo}"
 AB_REPO_URL="${AB_REPO_URL:-https://autobleem.retromenele.pl}"
 LOCAL=0
+PARTIAL=0
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-usage() { sed -n '2,40p'"${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,52p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --local) LOCAL=1; shift ;;
+        --partial) PARTIAL=1; shift ;;
         -h|--help) usage ;;
         *) break ;;
     esac
@@ -99,6 +111,10 @@ case "$KIND" in
     index)     DEST="" ;;
     *)         echo "unknown kind: $KIND" >&2; usage 1 ;;
 esac
+if [ "$PARTIAL" -eq 1 ] && [ "$KIND" != nightly ]; then
+    echo "--partial is for a development build (nightly) only" >&2
+    exit 1
+fi
 
 # a scratch dir with the files to upload and their sidecars, so one rsync does it
 STAGE="$(mktemp -d)"
@@ -120,6 +136,20 @@ if [ -n "$DEST" ]; then
         esac
     done
     echo "publishing to $DEST: $(cd "$STAGE/$DEST" && ls | grep -v '\.sha256$' | tr '\n' ' ')"
+fi
+
+# part of a development build: the files and the marker, no generator, no index (see --partial above)
+if [ "$PARTIAL" -eq 1 ]; then
+    touch "$STAGE/$DEST/.incomplete"
+    if [ "$LOCAL" -eq 1 ]; then
+        mkdir -p "$REPO_DIR"
+        cp -r "$STAGE"/. "$REPO_DIR"/
+        if [ "$(id -u)" -eq 0 ]; then chown -R "$(stat -c %u:%g "$REPO_DIR")" "$REPO_DIR"; fi
+    else
+        rsync -rlt --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r "$STAGE"/ "$REPO_HOST:$REPO_DIR/"
+    fi
+    echo "staged (not indexed until the build's last publish): $AB_REPO_URL/$DEST/"
+    exit 0
 fi
 # the index script travels with every publish, merged three-way with the copy the repository runs
 # (tools/repo_index_merge.py): two checkouts publishing in turn no longer overwrite each other's page
@@ -146,6 +176,7 @@ remote_index() {
     cat <<EOF
 set -e
 cd "$REPO_DIR"
+$( [ "$KIND" = nightly ] && echo "rm -f \"$DEST/.incomplete\" # the build's last publish: it is a nightly now" )
 if [ -f assets/icon.png ]; then mkdir -p rpi-imager && cp assets/icon.png rpi-imager/icon.png; fi
 if ! python3 .tools/repo_index.py . --base-url "$AB_REPO_URL"; then
     if [ -f .tools/repo_index.prev.py ]; then

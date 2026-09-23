@@ -30,3 +30,16 @@ def test_packages_kept_until_the_newest_has_its_own():
                                               lambda f: f in packages) == ["b", "c"]
     # the newest complete: only it
     assert repo_index.nightly_folders_to_keep(["a", "b", "c"], lambda f: True, lambda f: True) == ["c"]
+
+
+def test_a_build_still_being_published_is_left_alone():
+    # b is marked (repo_publish.sh --partial) and got its last file an hour ago; c is marked and was abandoned
+    # three days ago; a is a finished nightly
+    now = 10 * 24 * 3600
+    published = {"a": now - 5 * 24 * 3600, "b": now - 3600, "c": now - 3 * 24 * 3600}
+    unfinished, stale = repo_index.unfinished_nightlies(["a", "c", "b"], lambda f: f in {"b", "c"},
+                                                        published.get, now)
+    assert unfinished == ["b"]
+    assert stale == ["c"]
+    # nothing marked: nothing held back, nothing removed
+    assert repo_index.unfinished_nightlies(["a"], lambda f: False, published.get, now) == ([], [])

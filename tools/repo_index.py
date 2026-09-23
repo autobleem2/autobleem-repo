@@ -838,6 +838,18 @@ def nightly_folders_to_keep(folders, has_images, has_packages=lambda f: True):
     return sorted(keep, key=folders.index)
 
 
+# repo_publish.sh --partial leaves it in nightly/<version>/ until the run's last publish takes it away
+INCOMPLETE_MARKER = ".incomplete"
+UNFINISHED_MAX_AGE = 2 * 24 * 3600  # seconds since the last file arrived
+
+
+def unfinished_nightlies(folders, is_incomplete, published, now):
+    """The folders still being published, and those of them abandoned (nothing new for UNFINISHED_MAX_AGE)."""
+    unfinished = [f for f in folders if is_incomplete(f)]
+    stale = [f for f in unfinished if now - published(f) > UNFINISHED_MAX_AGE]
+    return [f for f in unfinished if f not in stale], stale
+
+
 def index_nightly(repo, base_url):
     """nightly/<version>/ - the development builds of develop (the nightly run, or one started by hand): the
     packages a release has, named by `git describe` (v2.0.0-alpha2-14-gabc1234), and the images when that run
@@ -855,6 +867,12 @@ def index_nightly(repo, base_url):
 
     folders = sorted((os.path.join(root, v) for v in os.listdir(root) if os.path.isdir(os.path.join(root, v))),
                      key=published)
+    # a build still being published (repo_publish.sh --partial) is not a nightly yet: it neither replaces the one
+    # before nor is listed until its run's last publish; one a run left unfinished goes after two days
+    unfinished, stale = unfinished_nightlies(
+        folders, lambda f: os.path.exists(os.path.join(f, INCOMPLETE_MARKER)), published, datetime.now().timestamp())
+    prune(stale, [], "unfinished development build")
+    folders = [f for f in folders if f not in unfinished and f not in stale]
     def has_images(folder):
         return any(IMAGE_RE.match(os.path.basename(p)) or PC_IMAGE_RE.match(os.path.basename(p))
                    for p in data_files(folder))
