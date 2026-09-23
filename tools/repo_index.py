@@ -52,7 +52,7 @@ import sys
 from datetime import datetime, timezone
 
 # bump on every change: tools/repo_publish.sh only replaces the copy the repository runs with a newer one
-INDEX_VERSION = 42
+INDEX_VERSION = 43
 
 # the release packages, by the name they carry (tools/make_*_package.sh, ci/build.sh)
 PACKAGE_KINDS = [
@@ -768,104 +768,255 @@ def index_manuals(repo, base_url):
 
 
 #*******************************
+# development builds
+#*******************************
+NIGHTLY_KEEP = 3
+
+
+def index_nightly(repo, base_url):
+    """nightly/<version>/ - the development builds of develop (the nightly run, or one started by hand): the
+    packages a release has, named by `git describe` (v2.0.0-alpha2-14-gabc1234), and the images when that run
+    made them. The NIGHTLY_KEEP newest by publish time are kept; each folder gets release.json + SHA256SUMS,
+    nightly/latest.json is the newest. An installed launcher's update check never reads this - it stays on
+    releases/ (latest.json, unstable.json)."""
+    root = os.path.join(repo, "nightly")
+    if not os.path.isdir(root):
+        return []
+
+    def published(folder):
+        # the newest sidecar in the folder is when the build went up (the folder's own mtime is not reliable)
+        times = [os.path.getmtime(os.path.join(folder, n)) for n in os.listdir(folder) if n.endswith(".sha256")]
+        return max(times) if times else os.path.getmtime(folder)
+
+    folders = sorted((os.path.join(root, v) for v in os.listdir(root) if os.path.isdir(os.path.join(root, v))),
+                     key=published)
+    prune(folders[:-NIGHTLY_KEEP], [], "development build")
+    builds = []
+    for folder in folders[-NIGHTLY_KEEP:]:
+        files, images, others = {}, {}, []
+        for path in data_files(folder):
+            entry = file_entry(repo, base_url, path)
+            name = entry["name"]
+            m = IMAGE_RE.match(name)
+            pm = PC_IMAGE_RE.match(name)
+            if m or pm:
+                images["pc-" + pm.group("arch") if pm else m.group("arch")] = entry
+                continue
+            kind = next((k for k, pattern, _ in PACKAGE_KINDS if pattern.match(name)), None)
+            if kind and kind not in files:
+                files[kind] = entry
+            else:
+                others.append(entry)
+        if not files and not images and not others:
+            continue
+        with open(os.path.join(folder, "SHA256SUMS"), "w", encoding="utf-8") as f:
+            for entry in list(files.values()) + list(images.values()) + others:
+                f.write("%s  %s\n" % (entry["sha256"], entry["name"]))
+        build = {
+            "version": os.path.basename(folder),
+            "channel": "dev",
+            "date": datetime.fromtimestamp(published(folder), timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            "files": files,
+            "images": images,
+            "other_files": others,
+        }
+        write_json(os.path.join(folder, "release.json"), build)
+        builds.append(build)
+    path = os.path.join(root, "latest.json")
+    if builds:
+        write_json(path, builds[-1])
+    elif os.path.isfile(path):
+        os.remove(path)
+    return builds
+
+
+#*******************************
 # the landing page
 #*******************************
 # Styled after the ab2 theme: its background (the logo is painted into it) as the hero, its navy/cyan
 # palette, its Selawik Light font - all under /assets, staged by tools/repo_assets.py.
 PAGE_CSS = """
 @font-face{font-family:Selawik;src:url(/assets/selawik-light.ttf) format('truetype');font-weight:300;font-display:swap}
-:root{--navy:#061a3a;--panel:rgba(4,22,56,.78);--line:rgba(80,200,255,.35);--cyan:#4fc8ff;--ink:#e8f2ff;--dim:#9fb8d6}
+:root{--navy:#061a3a;--panel:rgba(4,22,56,.82);--line:rgba(80,200,255,.28);--cyan:#4fc8ff;--ink:#e8f2ff;--dim:#9fb8d6;
+  --rel:#58e0a0;--pre:#ffc857;--dev:#c79bff;--warn:#ff8a65}
 *{box-sizing:border-box}
-body{margin:0;font-family:Selawik,"Segoe UI",system-ui,sans-serif;font-weight:300;color:var(--ink);
+html{scroll-padding-top:4rem}
+body{margin:0;font-family:Selawik,"Segoe UI",system-ui,sans-serif;font-weight:300;color:var(--ink);line-height:1.5;
   background:var(--navy) radial-gradient(ellipse at 50% 0,#0b3a7a 0,#071f47 45%,#040f26 100%) fixed}
-.hero{position:relative;height:min(46vw,590px);background:url(/assets/hero.jpg) center 30%/cover no-repeat}
-.hero:after{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,rgba(6,26,58,0) 75%,var(--navy) 100%)}
-main{max-width:64rem;margin:-1.5rem auto 3rem;padding:0 1rem;position:relative}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:1.2rem 1.4rem;margin:1.2rem 0;
-  box-shadow:0 0 24px rgba(0,120,220,.15),inset 0 0 0 1px rgba(255,255,255,.03)}
-h1{font-weight:300;font-size:1.9rem;letter-spacing:.06em;text-transform:uppercase;margin:0 0 .4rem;color:#fff}
-h2{font-weight:300;font-size:1.35rem;letter-spacing:.05em;text-transform:uppercase;margin:0 0 .8rem;color:var(--cyan)}
-h2 small,h1 small{font-size:.7em;color:var(--dim);letter-spacing:0;text-transform:none;margin-left:.6rem}
-p{line-height:1.5;margin:.4rem 0 .8rem}
-ul.what{line-height:1.5;margin:.3rem 0 .9rem;padding-left:1.2rem}ul.what li{margin:.25rem 0}
-ul.what b{color:var(--ink);font-weight:600}
 a{color:var(--cyan);text-decoration:none}a:hover{color:#fff;text-decoration:underline}
-table{border-collapse:collapse;width:100%}
-td,th{text-align:left;padding:.45rem .6rem;border-bottom:1px solid rgba(80,200,255,.14);vertical-align:top}
-th{font-weight:300;color:var(--dim);font-size:.85rem;letter-spacing:.06em;text-transform:uppercase}
+header.top{position:sticky;top:0;z-index:5;background:rgba(4,15,38,.92);backdrop-filter:blur(6px);
+  border-bottom:1px solid var(--line)}
+header.top .bar{max-width:68rem;margin:0 auto;padding:.55rem 1rem;display:flex;align-items:center;gap:1rem}
+header.top .brand{display:flex;align-items:center;gap:.6rem;color:#fff;font-size:1.15rem;letter-spacing:.04em}
+header.top .brand img{width:30px;height:30px}
+header.top .brand span{color:var(--dim);font-size:.95rem}
+header.top .brand:hover{text-decoration:none}
+header.top nav{margin-left:auto;display:flex;gap:1.1rem;font-size:.95rem}
+.hero{border-bottom:1px solid var(--line);background:linear-gradient(90deg,rgba(4,15,38,.6),rgba(11,58,122,.35))}
+.hero .in{max-width:68rem;margin:0 auto;padding:0 1rem;height:clamp(96px,15vw,180px);display:flex;align-items:center;gap:1rem}
+.hero p{flex:1;margin:0;font-size:clamp(1rem,2vw,1.4rem);color:#fff;max-width:34rem}
+.hero img{height:100%;width:auto;margin-left:auto;display:block;
+  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 18%,#000 82%,transparent 100%);
+  mask-image:linear-gradient(90deg,transparent 0,#000 18%,#000 82%,transparent 100%)}
+main{max-width:68rem;margin:0 auto 3rem;padding:0 1rem}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:1.1rem 1.3rem;margin:1rem 0}
+.lede{color:var(--dim);margin:1rem 0 .4rem;font-size:.98rem}
+.lede b{color:var(--ink);font-weight:400}
+h1{font-weight:300;font-size:1.7rem;margin:0 0 .4rem;color:#fff}
+h2{font-weight:300;font-size:1.2rem;letter-spacing:.04em;margin:0 0 .6rem;color:var(--cyan)}
+h2 small,h1 small{font-size:.75em;color:var(--dim);letter-spacing:0;margin-left:.5rem}
+h3{font-weight:400;font-size:.95rem;margin:1rem 0 .4rem;color:var(--dim)}
+h3 small{font-weight:300}
+p{margin:.4rem 0 .8rem}
+ul,ol{padding-left:1.3rem}li{margin:.3rem 0}
+ul.what{margin:.3rem 0 .9rem}ul.what b{color:var(--ink);font-weight:400}
+code{font-family:ui-monospace,Consolas,monospace;font-size:.88em;color:#fff;background:rgba(255,255,255,.07);
+  padding:.05em .35em;border-radius:3px}
+table{border-collapse:collapse;width:100%;margin:.4rem 0 .2rem}
+td,th{text-align:left;padding:.5rem .55rem;border-bottom:1px solid rgba(80,200,255,.12);vertical-align:middle}
+th{font-weight:300;color:var(--dim);font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;padding-top:.2rem}
 tr:last-child td{border-bottom:0}
+td.what small{display:block;color:var(--dim);font-size:.83rem;line-height:1.35;margin-top:.1rem}
+td.file{white-space:nowrap}
+td.file a{display:inline-block;padding:.2rem .7rem;border:1px solid var(--line);border-radius:4px;
+  background:rgba(79,200,255,.08);font-size:.88rem}
+td.file a:hover{background:rgba(79,200,255,.22);text-decoration:none}
+td.file a:before{content:"\\2193  "}
 td.size{white-space:nowrap;color:var(--dim);text-align:right}
+th.size{text-align:right}
 td.when{white-space:nowrap;color:var(--dim);font-size:.85em}
+.chan{display:inline-block;white-space:nowrap;font-size:.78rem;padding:.08rem .5rem;border-radius:999px;
+  border:1px solid currentColor;color:var(--dim)}
+.chan.rel{color:var(--rel)}.chan.pre{color:var(--pre)}.chan.dev{color:var(--dev)}
+.badge{display:inline-block;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;padding:.02rem .45rem;
+  border-radius:3px;background:rgba(255,138,101,.16);color:var(--warn);margin-left:.4rem;vertical-align:1px}
+.warn{color:var(--warn)}
 a.dl{display:inline-block;padding:.25rem .7rem;border:1px solid var(--line);border-radius:4px;background:rgba(79,200,255,.08)}
 a.dl:hover{background:rgba(79,200,255,.2);text-decoration:none}
-code{font-family:ui-monospace,Consolas,monospace;font-size:.9em;color:#fff;background:rgba(255,255,255,.07);padding:.05em .35em;border-radius:3px}
 .older{color:var(--dim);font-size:.9rem}
-h2.plat{margin:2.4rem 0 .2rem;padding-bottom:.3rem;border-bottom:1px solid var(--line);color:#fff;font-size:1.6rem}
-h3{font-weight:300;font-size:1rem;letter-spacing:.05em;text-transform:uppercase;margin:1rem 0 .4rem;color:var(--dim)}
-.panel.inputs{background:rgba(4,22,56,.5);border-style:dashed}
-.panel.inputs h2{color:var(--dim)}
-h3 small{letter-spacing:0;text-transform:none}
-nav.tabs{display:flex;flex-wrap:wrap;gap:.4rem;margin:1.4rem 0 .2rem}
-nav.tabs a{padding:.5rem 1rem;border:1px solid var(--line);border-bottom:0;border-radius:6px 6px 0 0;
-  background:rgba(4,22,56,.5);color:var(--dim);font-size:1rem;letter-spacing:.05em;text-transform:uppercase}
+details.inputs{margin:1rem 0;border:1px dashed var(--line);border-radius:8px;background:rgba(4,22,56,.45)}
+details.inputs>summary{cursor:pointer;padding:.75rem 1.3rem;color:var(--dim);list-style:none;display:flex;gap:.6rem;align-items:baseline}
+details.inputs>summary::-webkit-details-marker{display:none}
+details.inputs>summary:before{content:"\\25B8";color:var(--cyan);transition:transform .15s}
+details.inputs[open]>summary:before{transform:rotate(90deg)}
+details.inputs>summary b{color:var(--ink);font-weight:400}
+details.inputs>div{padding:0 1.3rem 1rem}
+h2.plat{margin:2rem 0 .2rem;padding-bottom:.3rem;border-bottom:1px solid var(--line);color:#fff;font-size:1.4rem}
+nav.tabs{display:flex;flex-wrap:wrap;gap:.3rem;margin:1.2rem 0 0;border-bottom:1px solid var(--line)}
+nav.tabs a{padding:.55rem 1.1rem;border:1px solid transparent;border-bottom:0;border-radius:6px 6px 0 0;
+  color:var(--dim);font-size:.98rem;margin-bottom:-1px}
 nav.tabs a:hover{color:#fff;text-decoration:none}
-nav.tabs a.active{background:var(--panel);color:var(--cyan);border-color:var(--cyan)}
+nav.tabs a.active{background:var(--panel);color:var(--cyan);border-color:var(--line)}
 body.js section.tab{display:none}
 body.js section.tab.active{display:block}
 body.js section.tab h2.plat{display:none}
-nav.subtabs{display:flex;flex-wrap:wrap;gap:.4rem;margin:1rem 0 .6rem}
+nav.subtabs{display:flex;flex-wrap:wrap;gap:.4rem;margin:1rem 0 .4rem}
 nav.subtabs a{padding:.3rem .9rem;border:1px solid var(--line);border-radius:999px;background:rgba(4,22,56,.5);
-  color:var(--dim);font-size:.9rem;letter-spacing:.04em}
+  color:var(--dim);font-size:.9rem}
 nav.subtabs a:hover{color:#fff;text-decoration:none}
 nav.subtabs a.active{background:var(--panel);color:var(--cyan);border-color:var(--cyan)}
-h3.subtab{font-size:1.2rem;text-transform:none;letter-spacing:0;color:#fff;margin:1.6rem 0 .2rem}
+h3.subtab{font-size:1.15rem;color:#fff;margin:1.4rem 0 .2rem}
 body.js section.subtab{display:none}
 body.js section.subtab.active{display:block}
 body.js section.subtab h3.subtab{display:none}
-ul,ol{line-height:1.55;padding-left:1.4rem}li{margin:.3rem 0}
 footer{color:var(--dim);font-size:.8rem;text-align:center;margin-top:2rem}
+@media (max-width:640px){
+  td.when,th.when,td.size,th.size{display:none}
+  .chan{white-space:normal;word-break:break-all}
+  td.file a{padding:.2rem .5rem}
+  .panel,details.inputs>div{padding-left:.8rem;padding-right:.8rem}
+  nav.tabs a{padding:.45rem .7rem;font-size:.9rem}
+  td,th{padding:.45rem .35rem}
+  header.top nav{gap:.7rem;font-size:.85rem}
+  header.top .brand span{display:none}
+  .hero img{display:none}
+}
 """
 
 
+def page_head(title, tagline):
+    """The top of every page: the document head, a slim bar with the emblem and the links, and a short banner -
+    the page's line on the left, the ab2 theme's AutoBleem 2 picture whole on the right - so the first screen
+    shows what to download, not only the picture (the old hero was 590 px tall)."""
+    e = html.escape
+    return ("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+            "<title>%s</title><link rel=\"icon\" href=\"/assets/icon.png\"><style>%s</style></head><body>"
+            "<header class=\"top\"><div class=\"bar\"><a class=\"brand\" href=\"/\"><img src=\"/assets/icon.png\" alt=\"\">"
+            "AutoBleem 2 <span>Downloads</span></a><nav>"
+            "<a href=\"/#manuals\">Manual</a><a href=\"/releases/\">All files</a>"
+            "<a href=\"https://github.com/autobleem2\">GitHub</a></nav></div></header>"
+            "<div class=\"hero\"><div class=\"in\"><p>%s</p><img src=\"/assets/hero.jpg\" alt=\"AutoBleem 2\"></div></div>"
+            % (e(title), PAGE_CSS, e(tagline)))
+
+
 def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc_cores, samples=None, psc_libs=None,
-                 psc_apps=None, psc_bios=None, pc=None, pcsx=None, manuals=None, psc_kernel=None):
-    """The page: a section per platform, each with what a user installs from (the image, the package)
-    and, under it, the build inputs - what the installer, the image build or the CI fetch: RetroArch
-    builds, cores, the Pi tarball with install.sh, the cover databases."""
+                 psc_apps=None, psc_bios=None, pc=None, pcsx=None, manuals=None, psc_kernel=None, nightly=None):
+    """The page: a tab per platform, each leading with what a user installs from (the installer, the images,
+    the packages) in one table across the three channels - the latest release, the one pre-release, the
+    newest development build - and, folded away under it, the build inputs the installers, the image build and
+    the CI fetch from here (RetroArch builds, cores, libraries, the kernel payload, the cover databases)."""
     e = html.escape
 
-    def row(label, f, cls="dl"):
-        return ("<tr><td>%s</td><td><a class=\"%s\" href=\"%s\">%s</a></td><td class=\"size\">%s</td>"
-                "<td class=\"when\">%s</td></tr>" % (
-                    e(label), cls, e(f["url"]), e(f["name"]), human(f["size"]), e(f.get("uploaded", ""))))
+    def chan(text, cls=""):
+        return "<span class=\"chan %s\">%s</span>" % (cls, e(text)) if text else ""
 
-    def date_of(d):
-        return "%s-%s-%s" % (d[:4], d[4:6], d[6:])
+    def row(label, f, version="", cls="", note="", badge=""):
+        """one file: what it is (a note under it, a badge after it), its version as a channel pill, the file,
+        its size and the day it went up (the full time on hover). The file is a button named by its type, the
+        whole name on hover - the names carry the version again and wrapped mid-word in a narrow column"""
+        when = f.get("uploaded", "")
+        m = re.search(r"\.(tar\.gz|img\.xz|zip|exe|txt|db|pdf)$", f["name"])
+        return ("<tr><td class=\"what\">%s%s%s</td><td>%s</td><td class=\"file\"><a href=\"%s\" title=\"%s\">%s</a></td>"
+                "<td class=\"size\">%s</td><td class=\"when\" title=\"%s\">%s</td></tr>" % (
+                    e(label), "<span class=\"badge\">%s</span>" % e(badge) if badge else "",
+                    "<small>%s</small>" % note if note else "", chan(version, cls),
+                    e(f["url"]), e(f["name"]), e(m.group(1) if m else "file"), human(f["size"]), e(when), e(when[:10])))
 
-    def table(rows, head=("", "File", "")):
-        # every row ends with the upload time; the callers name the first three columns
-        head = tuple(head) + ("Uploaded",)
-        return "<table><tr>%s</tr>%s</table>" % ("".join("<th>%s</th>" % h for h in head), "".join(rows))
+    def table(rows):
+        if not rows:
+            return ""
+        body = "".join(rows)
+        if "class=\"chan" not in body:
+            # nothing in it has a version (the manuals, the cover databases): no empty column
+            return ("<table><thead><tr><th>What</th><th>Download</th><th class=\"size\">Size</th><th class=\"when\">Date</th>"
+                    "</tr></thead><tbody>%s</tbody></table>" % body.replace("<td></td><td class=\"file\">", "<td class=\"file\">"))
+        return ("<table><thead><tr><th>What</th><th>Version</th><th>Download</th><th class=\"size\">Size</th>"
+                "<th class=\"when\">Date</th></tr></thead><tbody>%s</tbody></table>" % "".join(rows))
+
+    def inputs(summary, body):
+        """the build inputs, folded: a user installs from the table above, the installers and CI from these"""
+        return ("<details class=\"inputs\"><summary><b>Build inputs</b> %s</summary><div>%s</div></details>"
+                % (summary, body))
 
     stable = [r for r in releases if not r["prerelease"]]
     pre = [r for r in releases if r["prerelease"]]
+    nightly = nightly or []
+    channels = []  # (release dict, pill class, pill text)
+    if stable:
+        channels.append((stable[-1], "rel", stable[-1]["version"]))
+    if pre:
+        channels.append((pre[-1], "pre", pre[-1]["version"]))
+    if nightly:
+        channels.append((nightly[-1], "dev", "dev " + nightly[-1]["version"]))
 
-    def release_rows(kinds, which):
-        """The packages of the given kinds from a release, labelled with their kind."""
-        return [row(kind_title, which["files"][kind]) for kind, _, kind_title in PACKAGE_KINDS
-                if kind in kinds and kind in which["files"]]
-
-    def release_block(kinds):
-        """The latest stable release's packages of these kinds, then the one pre-release's; [] if none."""
+    def release_rows(kinds, short=None):
+        """the packages of these kinds in each channel - release, pre-release, development build"""
+        short = short or {}
         out = []
-        if stable and release_rows(kinds, stable[-1]):
-            out.append("<h3>Release <small>%s &middot; %s</small></h3>" % (e(stable[-1]["version"]), e(stable[-1]["date"])))
-            out.append(table(release_rows(kinds, stable[-1])))
-        if pre and release_rows(kinds, pre[-1]):
-            out.append("<h3>Pre-release <small>%s &middot; %s &middot; a development build, not a release</small></h3>"
-                       % (e(pre[-1]["version"]), e(pre[-1]["date"])))
-            out.append(table(release_rows(kinds, pre[-1])))
+        for which, cls, text in channels:
+            for kind, _, kind_title in PACKAGE_KINDS:
+                if kind in kinds and kind in which["files"]:
+                    out.append(row(short.get(kind, kind_title), which["files"][kind], text, cls))
         return out
+
+    def dev_images(titles):
+        """the newest development build's images, when that run made any (index_nightly: armhf, arm64, pc-i386)"""
+        if not nightly:
+            return []
+        dev = nightly[-1]
+        return [row(title, dev["images"][key], "dev " + dev["version"], "dev")
+                for key, title in titles if key in (dev.get("images") or {})]
 
     def older():
         if len(stable) > 1:
@@ -873,291 +1024,190 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
                 "<a href=\"/releases/%s/\">%s</a>" % (e(r["version"]), e(r["version"])) for r in reversed(stable[:-1]))]
         return []
 
-    out = []
-    out.append("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">")
-    out.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">")
-    out.append("<title>AutoBleem downloads</title><link rel=\"icon\" href=\"/assets/icon.png\">")
-    out.append("<style>%s</style></head><body>" % PAGE_CSS)
-    out.append("<div class=\"hero\"></div><main>")
-    out.append("<div class=\"panel\"><h1>Downloads</h1>"
-               "<p><a href=\"https://github.com/autobleem/AutoBleem2\">AutoBleem</a>, the game launcher for the "
-               "PlayStation Classic, the Raspberry Pi and the PC - as a bootable USB stick or a Windows program.</p>"
-               "<p>Each platform's tab has two parts:</p>"
-               "<ul class=\"what\">"
-               "<li><b>Install</b> - what you install from: the console's USB stick package, the Pi images, the "
-               "PC stick image, the Windows installer.</li>"
-               "<li><b>Build inputs</b> - the pieces the installers, the image build and the CI fetch from here: "
-               "RetroArch builds, cores, libraries, apps, the cover databases.</li>"
-               "</ul>"
-               "<p>Every file has a <code>.sha256</code> next to it. <a href=\"/releases/\">Browse</a> the tree for "
-               "older versions; for machines there is <a href=\"/releases/latest.json\">releases/latest.json</a>.</p>"
-               "</div>")
+    def json_links(*pairs):
+        return " &middot; ".join("<a href=\"%s\">%s</a>" % (e(u), e(t)) for u, t in pairs if u)
+
+    out = [page_head("AutoBleem downloads",
+                     "The game launcher for the PlayStation Classic, the Raspberry Pi and the PC.")]
+    out.append("<main>")
+    out.append("<p class=\"lede\">Pick your platform. <b>Release</b> is the tested build, <b>pre-release</b> the "
+               "next one being tested, <b>dev</b> the newest development build (nightly or on request - it may "
+               "not work). Every file has a <code>.sha256</code> next to it; "
+               "<a href=\"/releases/latest.json\">releases/latest.json</a> is the machine-readable list.</p>")
 
     # ---- PlayStation Classic ----
     out.append("<h2 class=\"plat\" id=\"psc\">PlayStation Classic</h2>")
     out.append("<div class=\"panel\"><h2>Install</h2>"
-               "<p>The console is set up from a Windows PC: unzip the installer, plug a USB stick in, run "
-               "<code>AutoBleemInstaller.exe</code>. It formats the stick if need be (FAT32), puts AutoBleem on it and "
-               "fetches what you tick from the build inputs below - the cover databases and, if wanted, RetroArch "
-               "with its cores, libraries, apps and BIOS files, and the sample games. Run it again to update: "
-               "your games, saves, memory cards and settings stay.</p>")
-    block = release_block(("installer",))
-    out += block if block else ["<p>No installer published yet.</p>"]
-    block = release_block(("psc",))
-    if block:
-        out.append("<p>The stick as one zip, covers included - unzip it onto the root of a FAT32 stick named "
-                   "<code>SONY</code> and boot the console with it:</p>")
-        out += block
+               "<p>Set the console up from a Windows PC: unzip the installer, plug in a USB stick, run "
+               "<code>AutoBleemInstaller.exe</code>. It prepares the stick (FAT32, named <code>SONY</code>), puts "
+               "AutoBleem on it and fetches what you tick - the cover art and, if you want other systems, RetroArch "
+               "with its cores, libraries, apps and BIOS files. Run it again to update: your games, saves, memory "
+               "cards and settings stay.</p>")
+    rows = release_rows(("installer", "psc"), {"installer": "Installer for Windows",
+                                               "psc": "The stick as one zip (unzip onto a FAT32 stick named SONY)"})
+    out.append(table(rows) if rows else "<p>No installer published yet.</p>")
     out += older()
     out.append("</div>")
-    rows = []
+    rows = release_rows(("psc-fs", "updateroms"), {"psc-fs": "The stick's file system (the installer's package)",
+                                                   "updateroms": "UpdateRoms (the installer puts it on the stick)"})
     if psc_builds:
         newest = sorted(psc_builds, key=psc_version_key)[-1]
-        b = psc_builds[newest]
-        rows.append(row("RetroArch %s%s" % (newest, " (manifest)" if b.get("manifest") else ""), b["zip"]))
+        rows.append(row("RetroArch for the console", psc_builds[newest]["zip"], newest,
+                        note="glibc 2.24, Wayland, GLES; loads xz-compressed cores"))
     if psc_cores:
-        rows.append(row("RetroArch cores, %s%s" % (date_of(psc_cores["date"]),
-                                                    ", %d cores" % psc_cores["count"] if psc_cores.get("count") else ""), psc_cores))
+        rows.append(row("RetroArch cores", psc_cores, "",
+                        note="%s cores that run on a stock console" % psc_cores.get("count", "")))
     if psc_libs:
-        rows.append(row("Runtime libraries for the apps, %s%s" % (date_of(psc_libs["date"]),
-                                                                   ", %d libraries" % psc_libs["count"] if psc_libs.get("count") else ""), psc_libs))
+        rows.append(row("Runtime libraries for the apps", psc_libs, "",
+                        note="SDL2 image/mixer/ttf, freetype, png, vorbis and the xpad module"))
     if psc_apps:
-        rows.append(row("Apps, %s%s" % (date_of(psc_apps["date"]),
-                                        ", %d apps" % psc_apps["count"] if psc_apps.get("count") else ""), psc_apps))
+        rows.append(row("Apps", psc_apps, "",
+                        note="%s self-contained ports - Doom, OpenBOR, Amiberry, ..." % psc_apps.get("count", "")))
     if psc_bios:
-        rows.append(row("BIOS list: %d files, %d MB, fetched from RetroBIOS by the installer"
-                        % (psc_bios["count"], psc_bios["total_bytes"] // (1024 * 1024)), psc_bios))
-    if rows or release_block(("psc-fs",)):
-        def links(latest, manifest, what="the list"):
-            out = "<a href=\"%s\">latest.json</a>" % latest
-            if manifest:
-                out += ", <a href=\"%s\">%s</a>" % (e(manifest), what)
-            return " (" + out + ")"
-        out.append("<div class=\"panel inputs\"><h2>Build inputs</h2>"
-                   "<p>What the PC installer lays out on a stick, piece by piece:</p>"
-                   "<ul class=\"what\">"
-                   "<li><b>The stick's file system</b> - the launcher, pcsx-ab, the scripts, the themes, the console "
-                   "tools, the manuals. One tarball per release, without RetroArch and without the cover databases "
-                   "(the installer fetches those from <a href=\"/db/\">db/</a>).</li>"
-                   "<li><b>RetroArch</b> (<code>RetroArch/bin</code>) - built for the console's firmware (glibc 2.24, "
-                   "Wayland, GLES, ALSA, udev) with the PSC patches; it loads xz-compressed cores as they are%s.</li>"
-                   "<li><b>Cores</b> - with their info files. RetroBoot 1.2's set for now: the ones that run on a "
-                   "stock console%s.</li>"
-                   "<li><b>Runtime libraries</b> (<code>Autobleem/lib</code>) - what the Apps need beyond the "
-                   "firmware: SDL2_image/mixer/ttf, freetype, png, vorbis; and the xpad kernel module for Xbox "
-                   "pads%s.</li>"
-                   "<li><b>Apps</b> (<code>Apps/</code>) - Amiberry, Doom, Duke Nukem 3D, OpenBOR, Tyrian, Prince of "
-                   "Persia, Shadow Warrior, Wolfenstein 3D, each self-contained%s.</li>"
-                   "<li><b>BIOS list</b> (<code>RetroArch/bios</code>) - the installer fetches the BIOS files from "
-                   "RetroBIOS by this list, file by file. No BIOS file is on this site%s.</li>"
-                   "%s"
-                   "</ul>"
-                   % (links("/psc/retroarch/latest.json", b.get("manifest") if psc_builds else None, "manifest.json"),
-                      links("/psc/cores/latest.json", psc_cores.get("manifest") if psc_cores else None),
-                      links("/psc/libs/latest.json", psc_libs.get("manifest") if psc_libs else None),
-                      links("/psc/apps/latest.json", psc_apps.get("manifest") if psc_apps else None),
-                      links("/psc/bios/latest.json", None),
-                      ("<li><b>Kernel flasher payload</b> <em>(preview)</em> - the AutoBleem kernel and rootfs "
-                       "overlay (<code>boot.img</code> + <code>abrootfs.tgz</code>) rebuilt from source by "
-                       "autobleem/psc-kernel-payload (Buildroot; newer BlueZ + WiFi drivers). "
-                       "<b>Not yet booted on a console - do not flash unless you have an LBOOT.EPB backup.</b> "
-                       "Download <a class=\"dl\" href=\"%s\">%s</a> (%s)%s</li>"
-                       % (e(psc_kernel["url"]), e(psc_kernel["name"]), human(psc_kernel["size"]),
-                          links("/psc/kernel/latest.json", psc_kernel.get("manifest")))) if psc_kernel else ""))
-        out += release_block(("psc-fs",))
-        if rows:
-            out.append(table(rows))
-        out.append("</div>")
+        rows.append(row("BIOS list", psc_bios, "", note="%d files, %d MB - the installer fetches them from RetroBIOS; "
+                        "no BIOS file is on this site" % (psc_bios["count"], psc_bios["total_bytes"] // (1024 * 1024))))
+    if psc_kernel:
+        rows.append(row("Kernel flasher payload", psc_kernel, "",
+                        badge="preview", note="<span class=\"warn\">boot.img + abrootfs.tgz from source, not yet booted "
+                        "on a console - flash only with an LBOOT.EPB backup</span>"))
+    if rows:
+        out.append(inputs("what the installer lays out on a stick, piece by piece",
+                          table(rows) + "<p class=\"older\">Catalogs: %s</p>" % json_links(
+                              ("/psc/retroarch/latest.json", "retroarch"), ("/psc/cores/latest.json", "cores"),
+                              ("/psc/libs/latest.json", "libs"), ("/psc/apps/latest.json", "apps"),
+                              ("/psc/bios/latest.json", "bios"), ("/psc/kernel/latest.json" if psc_kernel else "", "kernel"))))
 
     # ---- Raspberry Pi ----
     out.append("<h2 class=\"plat\" id=\"rpi\">Raspberry Pi</h2>")
-    out.append("<div class=\"panel\"><h2>Install</h2>")
-    if images:
-        stable_images = {v: f for v, f in images.items() if not is_prerelease(v)}
-        newest = newest_of(stable_images) or newest_of(images)
-        out.append("<p>Flash an image with <a href=\"https://www.raspberrypi.com/software/\">Raspberry Pi Imager</a>, "
-                   "one of two ways:</p>"
-                   "<ul class=\"what\">"
-                   "<li><b>Use custom</b> - with an image downloaded from here.</li>"
-                   "<li><b>This repository</b> - add it under <em>App Options &rarr; Content Repository</em>: "
-                   "<code>%s/rpi-imager/os_list.json</code>. The images then appear in Imager's own list.</li>"
-                   "</ul>"
-                   "<p>The first boot finishes the install; a network connection is needed for it.</p>"
-                   "<p><a href=\"/rpi-install.html\">Which image for which Pi, and the whole setup, step by step.</a></p>"
-                   % e(base_url))
-        out.append("<h3>Images <small>%s%s</small></h3>" % (e(newest), " &middot; pre-release" if is_prerelease(newest) else ""))
-        rows = []
-        for arch, title in (("armhf", "32-bit Raspberry Pi OS (Pi 2/3/4/400/Zero 2)"),
-                            ("arm64", "64-bit Raspberry Pi OS (Pi 3/4/5/400/Zero 2)")):
-            f = images[newest].get(arch)
-            if f:
-                rows.append(row(title, f))
-        out.append(table(rows, ("OS", "File", "")))
-    else:
-        out.append("<p>No image published yet.</p>")
-    out.append("</div>")
-    out.append("<div class=\"panel inputs\"><h2>Build inputs</h2>"
-               "<p><b>The package</b> - what the image carries and <code>install.sh</code> installs from. It is also "
-               "the way onto a Pi already running Raspberry Pi OS Lite: unpack it and run the script.</p>"
-               "<p>What the installer downloads:</p>"
-               "<ul class=\"what\">"
-               "<li><b>RetroArch</b>, prebuilt for each architecture (<a href=\"/rpi/retroarch/latest.json\">latest.json</a>). "
-               "<code>--retroarch prebuilt</code> takes it instead of building from source.</li>"
-               "<li><b>Cores</b> - every core libretro's buildbot has for the architecture, with the info, assets, "
-               "autoconfig, database, cheats, overlays and shaders bundles: one download instead of about 130 "
-               "(<a href=\"/rpi/cores/latest.json\">latest.json</a>).</li>"
-               "</ul>")
-    block = release_block(("rpi", "rpi64"))
-    out += block
+    out.append("<div class=\"panel\"><h2>Install</h2>"
+               "<p>Flash an image with <a href=\"https://www.raspberrypi.com/software/\">Raspberry Pi Imager</a> "
+               "(<i>Use custom</i>), or add this site to Imager as a repository (<i>App Options &rarr; Content "
+               "Repository</i>: <code>%s/rpi-imager/os_list.json</code>). The first boot finishes the install and "
+               "needs a network. <a href=\"/rpi-install.html\">Which image for which Pi, step by step.</a></p>"
+               % e(base_url))
+    rpi_titles = (("armhf", "32-bit image (Pi 2/3/4/400/Zero 2) - recommended"),
+                  ("arm64", "64-bit image (Pi 3/4/5/400/Zero 2)"))
     rows = []
+    for version in sorted(images or {}, key=version_key, reverse=True):
+        cls = "pre" if is_prerelease(version) else "rel"
+        for arch, title in rpi_titles:
+            f = images[version].get(arch)
+            if f:
+                rows.append(row(title, f, version, cls))
+    rows += dev_images(rpi_titles)
+    out.append(table(rows) if rows else "<p>No image published yet.</p>")
+    out.append("</div>")
+    rows = release_rows(("rpi", "rpi64"), {"rpi": "Package, 32-bit (install.sh)", "rpi64": "Package, 64-bit (install.sh)"})
     if builds:
         newest = newest_of(builds)
         for arch in ("armhf", "arm64"):
-            f = builds[newest].get(arch)
-            if f:
-                rows.append(row("RetroArch %s, %s" % (newest, arch), f))
-    if cores:
-        for arch in ("armhf", "arm64"):
-            f = cores.get(arch)
-            if f:
-                rows.append(row("RetroArch cores, %s, %s" % (arch, date_of(f["date"])), f))
+            if builds[newest].get(arch):
+                rows.append(row("RetroArch, %s" % arch, builds[newest][arch], newest))
+    for arch in ("armhf", "arm64"):
+        f = (cores or {}).get(arch)
+        if f:
+            rows.append(row("Cores and bundles, %s" % arch, f, "",
+                            note="every core buildbot has for the architecture, in one download"))
     if rows:
-        out.append("<h3>RetroArch</h3>" + table(rows))
-    if not block and not rows:
-        out.append("<p>Nothing published yet.</p>")
-    out.append("</div>")
+        out.append(inputs("the package the image installs from, and what install.sh downloads",
+                          table(rows) + "<p class=\"older\">The package also installs onto a Pi already running "
+                          "Raspberry Pi OS Lite: unpack it and run <code>sudo bash install.sh</code>. Catalogs: %s</p>"
+                          % json_links(("/rpi/retroarch/latest.json", "retroarch"), ("/rpi/cores/latest.json", "cores"))))
 
     # ---- PC: two products, two sub-tabs (tabbed() splits the section on the h3.subtab headings) ----
     out.append("<h2 class=\"plat\" id=\"pc\">PC</h2>")
     pc = pc or {}
-    # the PC USB stick: the image a user writes to a stick (Install), and under it what it installs and
-    # updates from - the tarball, the i386 RetroArch build, the cores (Build inputs)
     out.append("<h3 class=\"subtab\" id=\"pc-usb\">PC USB stick</h3>")
+    out.append("<div class=\"panel\"><h2>Install</h2>"
+               "<p>A 32-bit Debian appliance on a USB stick: write the image to a stick of 8 GB or more (Rufus in DD "
+               "mode, balenaEtcher, <code>dd</code>), boot the PC from it (BIOS or UEFI, Secure Boot off); the first "
+               "boot sets AutoBleem up and the rest of the stick becomes the games partition. "
+               "<a href=\"/pc-install.html\">Step by step.</a></p>")
     pc_images = pc.get("images") or {}
-    if pc_images:
-        out.append("<div class=\"panel\"><h2>Install</h2>"
-                   "<p>A 32-bit Debian appliance on a USB stick, the same as the Raspberry Pi's: write the image to a "
-                   "stick of 8 GB or more (Rufus in DD mode, balenaEtcher, <code>dd</code>), boot the PC from it "
-                   "(BIOS or UEFI, Secure Boot off) and the first boot sets AutoBleem up on the screen; the rest of "
-                   "the stick becomes the games partition. <a href=\"/pc-install.html\">The whole setup, step by "
-                   "step.</a></p>")
-        rows = []
-        for version in sorted(pc_images, key=version_key, reverse=True):
-            for arch, f in sorted(pc_images[version].items()):
-                label = "%s (%s)" % (version, "development build" if is_prerelease(version) else "stable")
-                rows.append(row(label, f))
-        out.append(table(rows, ("Version", "Image", "")))
-        out.append("</div>")
-    else:
-        out.append("<div class=\"panel\"><h2>Install</h2><p>No stick image published yet.</p></div>")
-    block = release_block(("pcusb",))
-    pc_builds = pc.get("builds") or {}
-    pc_cores = pc.get("cores") or {}
-    if block or pc_builds or pc_cores:
-        out.append("<div class=\"panel inputs\"><h2>Build inputs</h2>"
-                   "<p>What the stick's first boot and the launcher's update fetch: the package (unpack it on a minimal "
-                   "Debian 12 i386 and run <code>sudo bash install.sh</code> to install by hand), RetroArch built for "
-                   "i386 (<a href=\"/pc/retroarch/latest.json\">latest.json</a>) and the cores tarball "
-                   "(<a href=\"/pc/cores/latest.json\">latest.json</a>).</p>")
-        out += block
-        rows = []
-        for tag, arches in pc_builds.items():
-            for arch, f in sorted(arches.items()):
-                rows.append(row("RetroArch %s, %s" % (tag, arch), f))
-        for arch, f in sorted(pc_cores.items()):
-            rows.append(row("cores, %s (%s)" % (arch, date_of(f["date"])), f))
-        if rows:
-            out.append(table(rows))
-        out.append("</div>")
+    rows = []
+    for version in sorted(pc_images, key=version_key, reverse=True):
+        for arch, f in sorted(pc_images[version].items()):
+            rows.append(row("Stick image (%s)" % arch, f, version, "pre" if is_prerelease(version) else "rel"))
+    rows += dev_images((("pc-i386", "Stick image (i386)"),))
+    out.append(table(rows) if rows else "<p>No stick image published yet.</p>")
+    out.append("</div>")
+    rows = release_rows(("pcusb",), {"pcusb": "Package (install.sh, Debian 12 i386)"})
+    for tag, arches in (pc.get("builds") or {}).items():
+        for arch, f in sorted(arches.items()):
+            rows.append(row("RetroArch, %s" % arch, f, tag))
+    for arch, f in sorted((pc.get("cores") or {}).items()):
+        rows.append(row("Cores and bundles, %s" % arch, f, ""))
+    if rows:
+        out.append(inputs("what the stick's first boot and its updates fetch",
+                          table(rows) + "<p class=\"older\">Catalogs: %s</p>" % json_links(
+                              ("/pc/retroarch/latest.json", "retroarch"), ("/pc/cores/latest.json", "cores"))))
 
-    # the Windows product: the installer (Install), the portable folder and the two tools next to it, and
-    # what the setup helper fetches - libretro's RetroArch repacked, the cores, the BIOS list (Build inputs)
     out.append("<h3 class=\"subtab\" id=\"pc-windows\">Windows</h3>")
     out.append("<div class=\"panel\"><h2>Install</h2>"
-               "<p>AutoBleem as a Windows program: run the installer - it asks for nothing more than a folder for "
-               "the games, installs for your user alone (no administrator rights) and, if you tick it, fetches "
-               "RetroArch with every core so the other systems' games play too. The launcher runs full screen, "
-               "like on the console; Esc or the menu's Power Off leaves it. It keeps itself up to date from "
-               "here (Options -> Updates).</p>"
-               "<ul class=\"what\">"
-               "<li><b>AutoBleemSetup</b> - the installer (SmartScreen: <i>More info -> Run anyway</i>; it is not "
-               "signed).</li>"
-               "<li><b>Portable</b> - the same program as a folder for a stick or a drive: rename "
-               "<code>dataroot.txt.example</code> to <code>dataroot.txt</code> and name the games folder in "
-               "it.</li>"
-               "<li><b>UpdateRoms</b> - prepares a console stick or a Pi card in a card reader: the playlists, "
-               "names from RetroArch's databases, box art.</li>"
-               "<li><b>The launcher</b> zip - AutoBleem's development build, for a look at a stick's tree on a "
-               "PC (<code>autobleem-gui.exe &lt;root&gt;</code>).</li>"
-               "</ul>")
-    block = release_block(("win-setup", "win-product", "updateroms", "win"))
-    out += block if block else ["<p>Nothing published yet.</p>"]
+               "<p>AutoBleem as a Windows program, per user (no administrator rights): the installer asks only for "
+               "a games folder and, if you tick it, fetches RetroArch with every core. It runs full screen and "
+               "keeps itself up to date (Options &rarr; Updates). Not signed: SmartScreen wants <i>More info "
+               "&rarr; Run anyway</i>.</p>")
+    rows = release_rows(("win-setup", "win-product", "updateroms", "win"),
+                        {"win-setup": "Installer", "win-product": "Portable folder (name the games folder in dataroot.txt)",
+                         "updateroms": "UpdateRoms (prepares a console stick or a Pi card on a PC)",
+                         "win": "Launcher zip (a development look at a stick's tree)"})
+    out.append(table(rows) if rows else "<p>Nothing published yet.</p>")
     out.append("</div>")
     win = pc.get("win") or {}
-    if win:
-        out.append("<div class=\"panel inputs\"><h2>Build inputs</h2>"
-                   "<p>What the installer's setup step fetches (each with a fallback to libretro's own servers when "
-                   "missing here): RetroArch for Windows - libretro's build, repacked "
-                   "(<a href=\"/win/retroarch/latest.json\">latest.json</a>), the cores "
-                   "(<a href=\"/win/cores/latest.json\">latest.json</a>) and the BIOS list "
-                   "(<a href=\"/win/bios/latest.json\">latest.json</a> - the files themselves come from RetroBIOS).</p>")
-        rows = []
-        if win.get("retroarch"):
-            rows.append(row("RetroArch %s, Windows x86_64" % win["retroarch"]["version"], win["retroarch"]))
-        if win.get("cores"):
-            rows.append(row("cores, Windows x86_64 (%s)" % date_of(win["cores"]["date"]), win["cores"]))
-        if win.get("bios"):
-            rows.append(row("BIOS list (%d files, %d MB)" % (win["bios"]["count"], win["bios"]["total_bytes"] // (1024 * 1024)),
-                            win["bios"]))
-        out.append(table(rows))
-        out.append("</div>")
+    rows = []
+    if win.get("retroarch"):
+        rows.append(row("RetroArch (libretro's build, repacked)", win["retroarch"], win["retroarch"]["version"]))
+    if win.get("cores"):
+        rows.append(row("Cores", win["cores"], ""))
+    if win.get("bios"):
+        rows.append(row("BIOS list", win["bios"], "", note="%d files, %d MB, fetched from RetroBIOS" % (
+            win["bios"]["count"], win["bios"]["total_bytes"] // (1024 * 1024))))
+    if rows:
+        out.append(inputs("what the setup step fetches (libretro's servers are the fallback)", table(rows)))
 
-    # ---- shared build inputs ----
+    # ---- every platform ----
     if dbs or samples or pcsx or manuals:
         out.append("<h2 class=\"plat\" id=\"inputs\">Every platform</h2>")
     if manuals:
         out.append("<div class=\"panel\" id=\"manuals\"><h2>User manual</h2>"
-                   "<p>Installing AutoBleem on every platform, the launcher and its screens, refreshing a console "
-                   "stick's ROMs on a PC, the console tools - one PDF per language (<a href=\"/manuals/\">manuals/</a>).</p>")
-        out.append(table([row(lang, f) for lang, f in manuals], ("Language", "File", "")) + "</div>")
+                   "<p>Installing on every platform, the launcher and its screens, the console tools.</p>")
+        out.append(table([row(lang, f) for lang, f in manuals]) + "</div>")
+    emu_rows = []
     for name, heading, blurb in EMULATORS:
         builds_of = (pcsx or {}).get(name)
         if not builds_of:
             continue
         version = sorted(builds_of, key=pcsx_version_key)[-1]
         b = builds_of[version]
-        out.append("<div class=\"panel inputs\"><h2>%s</h2>"
-                   "<p>%s Build: <b>%s</b>. Each package unpacks to <code>pcsx-ab</code> + <code>plugins/</code> "
-                   "in the layout the launch scripts expect "
-                   "(<a href=\"/emu/%s/latest.json\">latest.json</a>%s).</p>"
-                   % (e(heading), blurb, e(b.get("note") or version), e(name),
-                      ", <a href=\"%s\">the manifest</a>" % e(b["manifest"]) if b.get("manifest") else ""))
-        rows = [row(title, b["files"][plat]) for plat, title in PCSX_PLATFORMS if plat in b["files"]]
-        out.append("<h3>%s</h3>" % e(version) + table(rows, ("Platform", "File", "")) + "</div>")
-    if dbs:
-        out.append("<div class=\"panel inputs\"><h2>Build inputs</h2>"
-                   "<p><b>The cover art databases</b> - the launcher's PS1 covers, by region (<a href=\"/db/\">db/</a>).</p>"
-                   "<p>Baked into the console and Windows packages; the Pi installer fetches them.</p>")
-        out.append(table([row("", f) for f in dbs]) + "</div>")
+        cls = "pre" if is_prerelease(version) else ("rel" if version.startswith("v") else "")
+        for plat, title in PCSX_PLATFORMS:
+            if plat in b["files"]:
+                emu_rows.append(row("%s, %s" % (name, title), b["files"][plat], version, cls))
+    if emu_rows:
+        out.append("<div class=\"panel\"><h2>PS1 emulators</h2><p>pcsx-abnxt (the default) and the classic pcsx-ab, "
+                   "the packages every platform's installer carries; each unpacks to <code>pcsx-ab</code> + "
+                   "<code>plugins/</code>. Catalogs: %s</p>" % json_links(
+                       ("/emu/pcsx-abnxt/latest.json", "pcsx-abnxt"), ("/emu/pcsx-ab/latest.json", "pcsx-ab"))
+                   + table(emu_rows) + "</div>")
+    rows = [row("Cover art, %s" % f["name"].replace("covers", "").replace(".db", ""), f,
+                note="the launcher's PS1 covers") for f in (dbs or [])]
     if samples:
         games = samples.get("games") or []
-        names = {"psx": "PlayStation", "nes": "NES", "snes": "Super NES", "md": "Mega Drive"}
-        out.append("<div class=\"panel inputs\"><h2>Sample games</h2>"
-                   "<p>What the Pi installer puts on the shelf, so the first start is not an empty one: homebrew "
-                   "whose licence allows redistribution, in one small pack "
-                   "(<a href=\"/samples/\">samples/</a>, <a href=\"/samples/latest.json\">latest.json</a>%s).</p>"
-                   "<p>Unpack it onto a console stick or a Pi card as it is - the games sit where the launcher looks.</p>"
-                   % (", <a href=\"%s\">the list</a>" % e(samples["manifest"]) if samples.get("manifest") else ""))
-        rows = [row("Sample pack, %s%s" % (date_of(samples["date"]), ", %d games" % len(games) if games else ""), samples)]
-        out.append(table(rows))
+        rows.append(row("Sample games", samples, "",
+                        note="%d homebrew games whose licences allow redistribution" % len(games) if games else ""))
+    if rows:
+        body = table(rows)
+        games = (samples or {}).get("games") or []
         if games:
-            out.append("<table><tr><th>Game</th><th>System</th><th>By</th><th>Licence</th></tr>")
-            for g in games:
-                out.append("<tr><td><a href=\"%s\">%s</a></td><td>%s</td><td>%s</td><td><a href=\"%s\">%s</a></td></tr>"
-                           % (e(g.get("source", "")), e(g.get("title", "")), e(names.get(g.get("system"), g.get("system", ""))),
-                              e(g.get("author", "")), e(g.get("licence_url", "")), e(g.get("licence", ""))))
-            out.append("</table>")
-        out.append("</div>")
+            names = {"psx": "PlayStation", "nes": "NES", "snes": "Super NES", "md": "Mega Drive"}
+            body += ("<h3>In the sample pack</h3><table><thead><tr><th>Game</th><th>System</th><th>By</th>"
+                     "<th>Licence</th></tr></thead><tbody>%s</tbody></table>" % "".join(
+                         "<tr><td><a href=\"%s\">%s</a></td><td>%s</td><td>%s</td><td><a href=\"%s\">%s</a></td></tr>"
+                         % (e(g.get("source", "")), e(g.get("title", "")),
+                            e(names.get(g.get("system"), g.get("system", ""))), e(g.get("author", "")),
+                            e(g.get("licence_url", "")), e(g.get("licence", ""))) for g in games))
+        out.append(inputs("the cover databases and the sample games the installers fetch", body))
 
     out = tabbed(out)
     out.append("<footer>Generated %s UTC &middot; theme: ab2</footer></main></body></html>"
@@ -1212,6 +1262,11 @@ def tabbed(out):
     return parent;
   }
   function show(id){
+    var el=id && document.getElementById(id);
+    if(el && !el.matches('section.tab,section.subtab')){
+      var home=el.closest('section.subtab')||el.closest('section.tab');
+      if(home){ show(home.id); el.scrollIntoView(); return; }
+    }
     var parent=showSub(id);
     if(parent) id=parent;
     var found=false;
@@ -1257,11 +1312,8 @@ def render_rpi_install(base_url, images):
     e = html.escape
     newest = newest_of(images) if images else None
     out = []
-    out.append("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">")
-    out.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">")
-    out.append("<title>AutoBleem on a Raspberry Pi</title><link rel=\"icon\" href=\"/assets/icon.png\">")
-    out.append("<style>%s</style></head><body>" % PAGE_CSS)
-    out.append("<div class=\"hero\"></div><main>")
+    out.append(page_head("AutoBleem on a Raspberry Pi", "A PlayStation Classic-style console from a Raspberry Pi."))
+    out.append("<main>")
     out.append("<div class=\"panel\"><h1>AutoBleem on a Raspberry Pi</h1>"
                "<p>AutoBleem turns a Raspberry Pi into a PlayStation Classic-style console: it boots straight into "
                "the game carousel, plays PlayStation games with its own emulator, and - with RetroArch - the "
@@ -1366,11 +1418,8 @@ def render_pc_install(base_url, images):
     e = html.escape
     newest = newest_of(images) if images else None
     out = []
-    out.append("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">")
-    out.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">")
-    out.append("<title>AutoBleem on a PC USB stick</title><link rel=\"icon\" href=\"/assets/icon.png\">")
-    out.append("<style>%s</style></head><body>" % PAGE_CSS)
-    out.append("<div class=\"hero\"></div><main>")
+    out.append(page_head("AutoBleem on a PC USB stick", "A PlayStation Classic-style console on a USB stick for a PC."))
+    out.append("<main>")
     out.append("<div class=\"panel\"><h1>AutoBleem on a PC USB stick</h1>"
                "<p>AutoBleem on a USB stick that turns any PC into a PlayStation Classic-style console: boot the PC "
                "from the stick and it comes up in the game carousel, with nothing of the PC's own disks touched. "
@@ -1484,10 +1533,12 @@ def main():
     dbs = index_db(repo, base_url)
     samples = index_samples(repo, base_url)
     manuals = index_manuals(repo, base_url)
+    nightly = index_nightly(repo, base_url)
     pcsx = {name: index_pcsx(repo, base_url, name) for name, _, _ in EMULATORS}
     pcsx = {name: b for name, b in pcsx.items() if b}
     pc = {"builds": pc_builds, "cores": pc_cores, "images": pc_images, "win": win}
-    for name, page in (("index.html", render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc_cores, samples, psc_libs, psc_apps, psc_bios, pc, pcsx, manuals, psc_kernel)),
+    for name, page in (("index.html", render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc_cores, samples, psc_libs, psc_apps, psc_bios, pc, pcsx, manuals, psc_kernel,
+                                                       nightly)),
                        ("rpi-install.html", render_rpi_install(base_url, images)),
                        ("pc-install.html", render_pc_install(base_url, pc_images))):
         tmp = os.path.join(repo, ".%s.tmp" % name)

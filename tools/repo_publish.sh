@@ -2,6 +2,10 @@
 # Publish files to the download repository (CLAUDE.md, "The download repository") and regenerate its index.
 #
 #   tools/repo_publish.sh release v2.0.0 dist/psc/*.zip dist/rpi/*.tar.gz ...   -> releases/v2.0.0/
+#   tools/repo_publish.sh nightly v2.0.0-alpha2-14-gabc1234 dist/*/*.tar.gz dist/*/*.img.xz ...
+#                                                                              -> nightly/<version>/ (a development build of
+#                                                                                 develop: the release packages and images; the
+#                                                                                 3 newest kept, never an update channel)
 #   tools/repo_publish.sh image v2.0.0-pre0-933bd2f build_rpi_image/*.img.xz build_rpi_image/rpi_imager_repo.json
 #                                                                              -> rpi-imager/images/<version>/
 #   tools/repo_publish.sh retroarch v1.22.2 retroarch-v1.22.2-armhf.tar.gz     -> rpi/retroarch/v1.22.2/
@@ -55,7 +59,7 @@ AB_REPO_URL="${AB_REPO_URL:-https://autobleem.retromenele.pl}"
 LOCAL=0
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-usage() { sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,40p'"${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -70,6 +74,7 @@ KIND="$1"; shift
 # where the files of this kind land, relative to the repository root
 case "$KIND" in
     release)   [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="releases/$VERSION" ;;
+    nightly)   [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="nightly/$VERSION" ;;
     image)     [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="rpi-imager/images/$VERSION" ;;
     retroarch) [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="rpi/retroarch/$VERSION" ;;
     cores)     [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="rpi/cores/$VERSION" ;;
