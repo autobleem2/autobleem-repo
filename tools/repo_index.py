@@ -630,14 +630,15 @@ def index_images(repo, base_url):
         keep = newest_of(pre)
         prune([os.path.join(root, v) for v in pre if v != keep], [], "pre-release image set")
         versions = {v: f for v, f in versions.items() if v == keep or v in stable}
-    # one Imager repository per channel (the owner's ask, 2026-09-23): os_list.json the newest stable set - until
-    # the first stable release, the newest set there is - and os_list-testing.json the one pre-release set;
-    # os_list-nightly.json is index_nightly()'s
+    # one Imager repository per channel (the owner's ask, 2026-09-23): os_list.json the newest stable set - none
+    # while there is no stable release (a pre-release is the testing list's, never the release one's) - and
+    # os_list-testing.json the one pre-release set; os_list-nightly.json is index_nightly()'s
     pre = [v for v in versions if is_prerelease(v)]
     stable = [v for v in versions if not is_prerelease(v)]
-    newest = newest_of(stable) or newest_of(versions)
-    write_imager_list(repo, base_url, "os_list.json", os.path.join(root, newest, "rpi_imager_repo.json"),
-                      versions[newest])
+    released = newest_of(stable)
+    write_imager_list(repo, base_url, "os_list.json",
+                      os.path.join(root, released, "rpi_imager_repo.json") if released else None,
+                      versions.get(released))
     testing = newest_of(pre)
     write_imager_list(repo, base_url, "os_list-testing.json",
                       os.path.join(root, testing, "rpi_imager_repo.json") if testing else None,
@@ -1025,8 +1026,10 @@ def imager_notice(base_url):
     testing, nightly - the ones this run wrote), each with a button that copies it - the one thing on the page a
     user has to type into another program."""
     names = [n for n in ("os_list.json", "os_list-testing.json", "os_list-nightly.json") if n in IMAGER_LISTS]
+    if not names:
+        return ""
     rows = []
-    for name in names or ["os_list.json"]:
+    for name in names:
         cls, label = IMAGER_CHANNELS[name]
         url = html.escape(base_url + "/rpi-imager/" + name)
         rows.append("<div class=\"nrow\"><span class=\"chan %s\">%s</span><code>%s</code><button type=\"button\" "
