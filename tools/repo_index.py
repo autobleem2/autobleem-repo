@@ -555,6 +555,59 @@ def index_cores(repo, base_url, platform="rpi"):
 #*******************************
 # Raspberry Pi images
 #*******************************
+# the Imager repositories the page offers, as written by this run: (file name under rpi-imager/, channel pill
+# class, label) - filled by write_imager_list(), read by imager_notice()
+IMAGER_LISTS = []
+IMAGER_CHANNELS = {"os_list.json": ("rel", "release"), "os_list-testing.json": ("pre", "testing"),
+                   "os_list-nightly.json": ("dev", "nightly")}
+
+
+def write_imager_list(repo, base_url, name, template, files, channel=""):
+    """rpi-imager/<name>: make_rpi_image.sh's rpi_imager_repo.json for an image set (template) with the
+    placeholders filled from the published files (files: arch -> file entry) - which image an entry is, by the
+    download hash the template carries, else by the architecture its url placeholder or name spells. An entry
+    with no image in the set is left out (a build that made one architecture only); a channel's name goes into
+    the entries' names ("AutoBleem testing (32-bit)"). No template or no image: the list is removed."""
+    path = os.path.join(repo, "rpi-imager", name)
+    os_list = None
+    if template and files and os.path.isfile(template):
+        with open(template, encoding="utf-8") as f:
+            os_list = json.load(f)
+        icon = base_url + "/rpi-imager/icon.png"
+        kept = []
+        for entry in os_list.get("os_list", []):
+            match = None
+            for arch, file in files.items():
+                if entry.get("image_download_sha256") == file["sha256"]:
+                    match = file
+            if match is None:
+                hint = (entry.get("url", "") + " " + entry.get("name", "")).lower()
+                for arch, file in files.items():
+                    if arch in hint or (arch == "armhf" and "32-bit" in hint) or (arch == "arm64" and "64-bit" in hint):
+                        match = file
+            if match is None:
+                continue
+            entry["url"] = match["url"]
+            entry["image_download_sha256"] = match["sha256"]
+            entry["image_download_size"] = match["size"]
+            if os.path.isfile(os.path.join(repo, "rpi-imager", "icon.png")):
+                entry["icon"] = icon
+            if channel and channel not in entry.get("name", ""):
+                entry["name"] = entry.get("name", "AutoBleem").replace("AutoBleem", "AutoBleem " + channel, 1)
+            kept.append(entry)
+        os_list["os_list"] = kept
+        if not kept:
+            os_list = None
+    if os_list is None:
+        if os.path.isfile(path):
+            os.remove(path)
+        return False
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    write_json(path, os_list)
+    IMAGER_LISTS.append(name)
+    return True
+
+
 def index_images(repo, base_url):
     root = os.path.join(repo, "rpi-imager", "images")
     versions = {}  # version -> {arch: entry}
@@ -577,32 +630,18 @@ def index_images(repo, base_url):
         keep = newest_of(pre)
         prune([os.path.join(root, v) for v in pre if v != keep], [], "pre-release image set")
         versions = {v: f for v, f in versions.items() if v == keep or v in stable}
+    # one Imager repository per channel (the owner's ask, 2026-09-23): os_list.json the newest stable set - until
+    # the first stable release, the newest set there is - and os_list-testing.json the one pre-release set;
+    # os_list-nightly.json is index_nightly()'s
+    pre = [v for v in versions if is_prerelease(v)]
+    stable = [v for v in versions if not is_prerelease(v)]
     newest = newest_of(stable) or newest_of(versions)
-    # make_rpi_image.sh's rpi_imager_repo.json for that version, with the placeholders filled in
-    template = os.path.join(root, newest, "rpi_imager_repo.json")
-    if os.path.isfile(template):
-        with open(template, encoding="utf-8") as f:
-            os_list = json.load(f)
-        icon = base_url + "/rpi-imager/icon.png"
-        for entry in os_list.get("os_list", []):
-            # which image this entry is: by the download hash the template already carries, else by the
-            # architecture named in its url placeholder (__ARMHF_IMAGE_URL__) or name
-            match = None
-            for arch, file in versions[newest].items():
-                if entry.get("image_download_sha256") == file["sha256"]:
-                    match = file
-            if match is None:
-                hint = (entry.get("url", "") + " " + entry.get("name", "")).lower()
-                for arch, file in versions[newest].items():
-                    if arch in hint or (arch == "armhf" and "32-bit" in hint) or (arch == "arm64" and "64-bit" in hint):
-                        match = file
-            if match is not None:
-                entry["url"] = match["url"]
-                entry["image_download_sha256"] = match["sha256"]
-                entry["image_download_size"] = match["size"]
-            if os.path.isfile(os.path.join(repo, "rpi-imager", "icon.png")):
-                entry["icon"] = icon
-        write_json(os.path.join(repo, "rpi-imager", "os_list.json"), os_list)
+    write_imager_list(repo, base_url, "os_list.json", os.path.join(root, newest, "rpi_imager_repo.json"),
+                      versions[newest])
+    testing = newest_of(pre)
+    write_imager_list(repo, base_url, "os_list-testing.json",
+                      os.path.join(root, testing, "rpi_imager_repo.json") if testing else None,
+                      versions.get(testing), "testing")
     return versions
 
 
@@ -827,6 +866,13 @@ def index_nightly(repo, base_url):
         write_json(path, builds[-1])
     elif os.path.isfile(path):
         os.remove(path)
+    # the newest build's Pi images as Imager's third repository (the image job publishes make_rpi_image.sh's
+    # rpi_imager_repo.json next to them)
+    newest = builds[-1] if builds else None
+    write_imager_list(repo, base_url, "os_list-nightly.json",
+                      os.path.join(root, newest["version"], "rpi_imager_repo.json") if newest else None,
+                      {a: f for a, f in (newest or {}).get("images", {}).items() if a in ("armhf", "arm64")},
+                      "nightly")
     return builds
 
 
@@ -923,6 +969,8 @@ body.js section.subtab h3.subtab{display:none}
   border:1px solid var(--line);border-left:3px solid var(--cyan);border-radius:6px;background:rgba(79,200,255,.07)}
 .notice .label{flex-basis:100%;color:var(--dim);font-size:.88rem}
 .notice .label b{color:var(--ink);font-weight:400}
+.notice .nrow{display:flex;align-items:center;gap:.8rem;width:100%}
+.notice .nrow .chan{min-width:5.2rem;text-align:center}
 .notice code{flex:1;min-width:0;overflow-wrap:anywhere;font-size:.9rem;padding:.35rem .6rem;background:rgba(0,0,0,.28)}
 button.copy{font:inherit;font-size:.88rem;color:var(--cyan);background:rgba(79,200,255,.08);border:1px solid var(--line);
   border-radius:4px;padding:.3rem .9rem;cursor:pointer}
@@ -973,13 +1021,19 @@ function abCopy(b){
 
 
 def imager_notice(base_url):
-    """The Raspberry Pi Imager repository address in a box of its own, with a button that copies it - the
-    one thing on the page a user has to type into another program."""
-    url = html.escape(base_url + "/rpi-imager/os_list.json")
+    """The Raspberry Pi Imager repository addresses in a box of their own, one row per channel (release,
+    testing, nightly - the ones this run wrote), each with a button that copies it - the one thing on the page a
+    user has to type into another program."""
+    names = [n for n in ("os_list.json", "os_list-testing.json", "os_list-nightly.json") if n in IMAGER_LISTS]
+    rows = []
+    for name in names or ["os_list.json"]:
+        cls, label = IMAGER_CHANNELS[name]
+        url = html.escape(base_url + "/rpi-imager/" + name)
+        rows.append("<div class=\"nrow\"><span class=\"chan %s\">%s</span><code>%s</code><button type=\"button\" "
+                    "class=\"copy\" data-copy=\"%s\" onclick=\"abCopy(this)\">Copy</button></div>" % (cls, label, url, url))
     return ("<div class=\"notice\"><div class=\"label\"><b>Raspberry Pi Imager repository</b> - "
-            "<i>App Options &rarr; Content Repository &rarr; Use custom URL</i></div>"
-            "<code>%s</code><button type=\"button\" class=\"copy\" data-copy=\"%s\" onclick=\"abCopy(this)\">Copy"
-            "</button></div>" % (url, url))
+            "<i>App Options &rarr; Content Repository &rarr; Use custom URL</i>, one per channel</div>%s</div>"
+            % "".join(rows))
 
 
 def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc_cores, samples=None, psc_libs=None,
