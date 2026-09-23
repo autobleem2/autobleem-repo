@@ -2,7 +2,7 @@
 
 `https://autobleem.retromenele.pl/admin/` - what the builders are doing, what each channel holds, the build
 server's health, and the release team's buttons (a nightly, a promotion, cancel / re-run, withdraw, republish
-the page). The plan and the reasons: `autobleem-main`'s `docs/admin-panel-plan.md`.
+the page). The plan and the reasons: `autobleem-main`'s `docs/archive/admin-panel-plan.md`.
 
 - `app/` - the service (FastAPI): the JSON API under `/admin/api/` and the page (`app/static/index.html`).
 - `tests/` - over a fake GitHub: `python -m pytest -q` here (`pip install -r requirements.txt pytest`).

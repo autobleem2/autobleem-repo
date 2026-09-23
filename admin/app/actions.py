@@ -1,4 +1,4 @@
-"""What the release team can do - each one starts a workflow (the logic lives there, docs/admin-panel-plan.md)
+"""What the release team can do - each one starts a workflow (the logic lives there, docs/archive/admin-panel-plan.md)
 or cancels / re-runs a run - and the audit log every action lands in."""
 import json
 import os

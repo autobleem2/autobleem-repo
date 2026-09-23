@@ -1,7 +1,7 @@
 # Withdraw a bad testing or nightly build from the download site (or restore one): tools/repo_withdraw.sh
 # moves its folders into the hidden .withdrawn/ (never deletes), then the catalogs and the page are
 # regenerated so each channel falls back to what is left. What the admin panel's "Withdraw" button runs
-# (docs/admin-panel-plan.md in autobleem-main). Self-hosted: the site is the build server's directory.
+# (docs/archive/admin-panel-plan.md in autobleem-main). Self-hosted: the site is the build server's directory.
 # Gated by AB_CI_ENABLED.
 name: withdraw
 
