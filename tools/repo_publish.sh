@@ -149,13 +149,21 @@ cd "$REPO_DIR"
 if [ -f assets/icon.png ]; then mkdir -p rpi-imager && cp assets/icon.png rpi-imager/icon.png; fi
 if ! python3 .tools/repo_index.py . --base-url "$AB_REPO_URL"; then
     if [ -f .tools/repo_index.prev.py ]; then
-        echo "the merged repo_index.py failed - the previous copy is restored and run" >&2
+        # the base and its revision go back with the copy: left at the new version, the next publish's merge
+        # took the new generator for already applied and kept the old one (2026-09-23)
+        echo "the merged repo_index.py failed - the previous copy (and its merge base) is restored and run" >&2
         cp .tools/repo_index.prev.py .tools/repo_index.py
+        for f in base.py rev; do
+            [ -f .tools/repo_index.prev.\$f ] && cp .tools/repo_index.prev.\$f .tools/repo_index.\$f
+        done
         python3 .tools/repo_index.py . --base-url "$AB_REPO_URL"
     fi
     exit 1
 fi
 cp .tools/repo_index.py .tools/repo_index.prev.py
+for f in base.py rev; do
+    [ -f .tools/repo_index.\$f ] && cp .tools/repo_index.\$f .tools/repo_index.prev.\$f
+done
 EOF
 }
 
