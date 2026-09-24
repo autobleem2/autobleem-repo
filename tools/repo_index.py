@@ -1405,9 +1405,11 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
     if dbs or samples or pcsx or manuals or store:
         out.append("<h2 class=\"plat\" id=\"inputs\">Every platform</h2>")
     if store:
+        # an App built for four systems is one item
+        count = len({i["id"] for items in store.values() for i in items})
         out.append("<div class=\"panel\" id=\"store\"><h2>AutoBleem Store</h2><p>Apps and games the launcher's Store "
-                   "installs with one press - %d items today. <a href=\"/store/\">See what it offers &rarr;</a></p></div>"
-                   % sum(len(v) for v in store.values()))
+                   "installs with one press - %d %s today. <a href=\"/store/\">See what it offers &rarr;</a></p></div>"
+                   % (count, "item" if count == 1 else "items"))
     if manuals:
         out.append("<div class=\"panel\" id=\"manuals\"><h2>User manual</h2>"
                    "<p>Installing on every platform, the launcher and its screens, the console tools.</p>")
