@@ -60,6 +60,35 @@ def test_catalog_from_descriptors_with_sums_urls_and_pruning():
         assert os.path.exists(os.path.join(psc, "opentyrian.png"))
 
 
+def test_store_page_shows_each_system_with_its_items():
+    with tempfile.TemporaryDirectory() as repo:
+        rpi = os.path.join(repo, "store", "rpi")
+        write(os.path.join(rpi, "terminal-rpi-1.0.0.zip"), b"zip bytes")
+        write(os.path.join(rpi, "terminal.png"), b"png")
+        item(os.path.join(rpi, "terminal.item.json"), id="app/terminal", kind="app", title="Terminal",
+             version="1.0.0", author="AutoBleem team", licence="GPL-3.0-or-later", description="A <shell>",
+             image="terminal.png", files=[{"name": "terminal-rpi-1.0.0.zip"}])
+        pages = {}
+        repo_index.index_store(repo, "https://site", pages)
+        assert pages["rpi"][0]["files"][0]["uploaded"]  # the day it went up, for the Date column
+
+        page = repo_index.render_store("https://site", pages)
+        assert "<title>AutoBleem Store</title>" in page
+        assert "Terminal" in page and "A &lt;shell&gt;" in page  # escaped
+        assert "AutoBleem team &middot; GPL-3.0-or-later" in page
+        assert "https://site/store/rpi/terminal.png" in page  # the icon
+        assert "https://site/store/rpi/terminal-rpi-1.0.0.zip" in page
+        assert "https://site/store/rpi/catalog.json" in page
+        assert "https://site/store/psc/catalog.json" not in page  # no catalog there: no dead link
+        assert "Nothing for this system yet." in page  # the console's tab
+        assert 'data-tab="psc"' in page and 'data-subtab="rpi64"' in page
+        assert "Windows" not in page  # nothing for it: no tab
+
+        # the landing page points at it
+        landing = repo_index.render_index("https://site", [], {}, {}, {}, [], {}, None, store=pages)
+        assert 'href="/store/"' in landing
+
+
 def test_no_store_folder():
     with tempfile.TemporaryDirectory() as repo:
         assert repo_index.index_store(repo, "https://site") == {}
