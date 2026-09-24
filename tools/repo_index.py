@@ -15,6 +15,8 @@ Reads what is there (CLAUDE.md, "The download repository", has the layout) and w
     psc/cores/latest.json              the newest cores tarball for the console (psc/cores/cores-psc-<date>.tar.gz)
     psc/libs/latest.json               the newest runtime-library pack for the console's apps (psc/libs/libs-psc-<date>.tar.gz)
     psc/apps/latest.json               the newest pack of the console's third-party Apps (psc/apps/apps-psc-<date>.tar.gz)
+    store/<platform>/catalog.json      the AutoBleem Store's catalog for a platform (psc, rpi, rpi64, pcusb, win): every
+                                       <id>.item.json there, its files' sizes, sums and urls filled in
     psc/bios/latest.json               the console's BIOS list (psc/bios/biospack.txt: what the installer fetches from
                                        RetroBIOS into RetroArch/bios - only the list is here, never a BIOS file)
     win/retroarch/<v>/                 RetroArch for the Windows product: libretro's own x86_64 build repacked as
@@ -511,6 +513,75 @@ def index_win(repo, base_url):
     if bios:
         out["bios"] = bios
     return out
+
+
+def index_store(repo, base_url):
+    """store/<platform>/: the AutoBleem Store's catalog (the launcher's docs/store-plan.md), one per platform.
+
+    Each item is an <id>.item.json descriptor next to its files:
+        {"id": "app/opentyrian", "kind": "app", "title": "OpenTyrian", "version": "2.1", "author": "...",
+         "licence": "GPL-2.0", "description": "...", "serial": "...", "image": "opentyrian.png",
+         "files": [{"name": "opentyrian-psc-2.1.zip", "disc": 1}], "requires": ["pack/psc-libs"]}
+    and catalog.json lists them with each file's size, sha256 and url (the Store refuses a download that does
+    not match). A descriptor that names a file which is not there, or lacks an id, a kind or a title, is left
+    out and said so. A file no descriptor names any more (an App's previous version) is pruned."""
+    counts = {}
+    root = os.path.join(repo, "store")
+    if not os.path.isdir(root):
+        return counts
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    for platform in sorted(os.listdir(root)):
+        folder = os.path.join(root, platform)
+        if not os.path.isdir(folder):
+            continue
+        items, named = [], set()
+        for name in sorted(os.listdir(folder)):
+            if not name.endswith(".item.json"):
+                continue
+            try:
+                with open(os.path.join(folder, name), encoding="utf-8") as f:
+                    d = json.load(f)
+            except (OSError, ValueError) as e:
+                print("store/%s/%s: not read (%s)" % (platform, name, e))
+                continue
+            if not all(d.get(k) for k in ("id", "kind", "title")):
+                print("store/%s/%s: no id, kind or title - left out" % (platform, name))
+                continue
+            files, missing = [], []
+            for f in d.get("files") or []:
+                path = os.path.join(folder, f.get("name") or "")
+                if not f.get("name") or not os.path.isfile(path):
+                    missing.append(f.get("name") or "(no name)")
+                    continue
+                entry = file_entry(repo, base_url, path)
+                one = {k: entry[k] for k in ("name", "size", "sha256", "url")}
+                if f.get("disc"):
+                    one["disc"] = f["disc"]
+                files.append(one)
+            if missing or not files:
+                print("store/%s/%s: %s - left out" % (platform, name, "missing " + ", ".join(missing) if missing
+                                                        else "no files"))
+                continue
+            item = {k: d[k] for k in ("id", "kind", "title", "version", "author", "licence", "description",
+                                      "serial", "requires") if d.get(k)}
+            image = d.get("image")
+            if image and os.path.isfile(os.path.join(folder, image)):
+                item["image"] = base_url + "/store/%s/%s" % (platform, image)
+                named.add(image)
+            item["files"] = files
+            items.append(item)
+            named.update(f["name"] for f in files)
+        # what nothing names any more goes, with its sidecar
+        for path in data_files(folder):
+            if os.path.basename(path) not in named:
+                print("pruning store/%s/%s" % (platform, os.path.basename(path)))
+                for p in (path, path + ".sha256"):
+                    if os.path.isfile(p):
+                        os.remove(p)
+        write_json(os.path.join(folder, "catalog.json"),
+                   {"schema": 1, "platform": platform, "date": today, "items": items})
+        counts[platform] = len(items)
+    return counts
 
 
 def index_psc_apps(repo, base_url):
@@ -1683,6 +1754,7 @@ def main():
     samples = index_samples(repo, base_url)
     manuals = index_manuals(repo, base_url)
     nightly = index_nightly(repo, base_url)
+    store = index_store(repo, base_url)
     pcsx = {name: index_pcsx(repo, base_url, name) for name, _, _ in EMULATORS}
     pcsx = {name: b for name, b in pcsx.items() if b}
     pc = {"builds": pc_builds, "cores": pc_cores, "images": pc_images, "win": win}
@@ -1694,6 +1766,8 @@ def main():
         with open(tmp, "w", encoding="utf-8") as f:
             f.write(page)
         os.replace(tmp, os.path.join(repo, name))
+    if store:
+        print("store: " + ", ".join("%s %d items" % (p, n) for p, n in store.items()))
     print("%s: %d releases, %d RetroArch builds, %d cores tarballs, %d PSC RetroArch builds, %s PSC cores, %d image sets, "
           "%d PC RetroArch builds, %d PC cores tarballs, %d PC image sets, %d databases, %s sample pack, %d manuals" % (
         repo, len(releases), len(builds), len(cores), len(psc_builds), "1" if psc_cores else "0", len(images),

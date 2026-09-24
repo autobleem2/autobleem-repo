@@ -17,6 +17,19 @@ Selawik Light, the emblem).
 - A `--local` publish run as root (a CI container) hands the tree back to its owner at the end; a failed
   generator is replaced by the previous one *with its merge base*.
 
+## The AutoBleem Store's catalog (2026-09-24)
+
+`store/<platform>/` (psc, rpi, rpi64, pcusb, win) is what the AutoBleem Store extension offers; its layout is
+set by the launcher's `docs/store-plan.md`.
+- **Publishing**: `repo_publish.sh store <platform> FILES...` puts the files there. Each item is an
+  `<id>.item.json` descriptor (id, kind, title, version, author, licence, description, image, files by name
+  with an optional disc, requires) next to its files.
+- **Indexing**: `index_store()` writes `catalog.json` with every file's size, sha256 and url. It leaves out a
+  descriptor whose files are not all there, and prunes a file no descriptor names (an App's previous
+  version). Tested in `tests/test_store_index.py`.
+- **The pages do not show it.** Their look is approved; a Store panel would have to fit the existing pieces
+  first.
+
 ## The pages' look and structure - the rules (the owner's, 2026-09-23)
 
 The owner approved the 2026-09-23 redesign ("look and feel of the page is great"). **Keep it; change it only
