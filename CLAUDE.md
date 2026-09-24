@@ -27,8 +27,12 @@ set by the launcher's `docs/store-plan.md`.
 - **Indexing**: `index_store()` writes `catalog.json` with every file's size, sha256 and url. It leaves out a
   descriptor whose files are not all there, and prunes a file no descriptor names (an App's previous
   version). Tested in `tests/test_store_index.py`.
-- **The pages do not show it.** Their look is approved; a Store panel would have to fit the existing pieces
-  first.
+- **Its page** (2026-09-24, the owner asked for one instead of Caddy's file list): `render_store()` writes
+  `store/index.html` with the approved pieces only - `page_head`, a tab per system (the two Raspberry Pi
+  flavours as sub-tabs; Windows only once it has a catalog), the Apps and the games in the one table style
+  (`file_row`/`files_table`, module-level now and shared with `render_index`; an item's picture floats in its
+  What cell), and the catalog's URL folded under **Build inputs**. The top bar links it as **Store**; the
+  landing page's Every platform tab has a short AutoBleem Store panel pointing at it.
 
 ## The pages' look and structure - the rules (the owner's, 2026-09-23)
 

@@ -515,7 +515,7 @@ def index_win(repo, base_url):
     return out
 
 
-def index_store(repo, base_url):
+def index_store(repo, base_url, pages=None):
     """store/<platform>/: the AutoBleem Store's catalog (the launcher's docs/store-plan.md), one per platform.
 
     Each item is an <id>.item.json descriptor next to its files:
@@ -524,7 +524,10 @@ def index_store(repo, base_url):
          "files": [{"name": "opentyrian-psc-2.1.zip", "disc": 1}], "requires": ["pack/psc-libs"]}
     and catalog.json lists them with each file's size, sha256 and url (the Store refuses a download that does
     not match). A descriptor that names a file which is not there, or lacks an id, a kind or a title, is left
-    out and said so. A file no descriptor names any more (an App's previous version) is pruned."""
+    out and said so. A file no descriptor names any more (an App's previous version) is pruned.
+
+    pages, when given, gets each platform's items as the Store's page shows them (render_store): the catalog's
+    fields plus each file's upload time."""
     counts = {}
     root = os.path.join(repo, "store")
     if not os.path.isdir(root):
@@ -534,7 +537,7 @@ def index_store(repo, base_url):
         folder = os.path.join(root, platform)
         if not os.path.isdir(folder):
             continue
-        items, named = [], set()
+        items, named, uploaded = [], set(), {}
         for name in sorted(os.listdir(folder)):
             if not name.endswith(".item.json"):
                 continue
@@ -558,6 +561,7 @@ def index_store(repo, base_url):
                 if f.get("disc"):
                     one["disc"] = f["disc"]
                 files.append(one)
+                uploaded[f["name"]] = entry["uploaded"]
             if missing or not files:
                 print("store/%s/%s: %s - left out" % (platform, name, "missing " + ", ".join(missing) if missing
                                                         else "no files"))
@@ -581,6 +585,9 @@ def index_store(repo, base_url):
         write_json(os.path.join(folder, "catalog.json"),
                    {"schema": 1, "platform": platform, "date": today, "items": items})
         counts[platform] = len(items)
+        if pages is not None:
+            pages[platform] = [dict(i, files=[dict(f, uploaded=uploaded.get(f["name"], "")) for f in i["files"]])
+                               for i in items]
     return counts
 
 
@@ -1051,6 +1058,7 @@ td,th{text-align:left;padding:.5rem .55rem;border-bottom:1px solid rgba(80,200,2
 th{font-weight:300;color:var(--dim);font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;padding-top:.2rem}
 tr:last-child td{border-bottom:0}
 td.what small{display:block;color:var(--dim);font-size:.83rem;line-height:1.35;margin-top:.1rem}
+td.what img.icon{float:left;width:44px;height:44px;object-fit:contain;margin:.1rem .75rem .1rem 0;border-radius:6px}
 td.file{white-space:nowrap}
 td.file a{display:inline-block;padding:.2rem .7rem;border:1px solid var(--line);border-radius:4px;
   background:rgba(79,200,255,.08);font-size:.88rem}
@@ -1129,7 +1137,7 @@ def page_head(title, tagline):
             "<title>%s</title><link rel=\"icon\" href=\"/assets/icon.png\"><style>%s</style>%s</head><body>"
             "<header class=\"top\"><div class=\"bar\"><a class=\"brand\" href=\"/\"><img src=\"/assets/icon.png\" alt=\"\">"
             "AutoBleem 2 <span>Downloads</span></a><nav>"
-            "<a href=\"/#manuals\">Manual</a><a href=\"/releases/\">All files</a>"
+            "<a href=\"/store/\">Store</a><a href=\"/#manuals\">Manual</a><a href=\"/releases/\">All files</a>"
             "<a href=\"https://github.com/autobleem2\">GitHub</a></nav></div></header>"
             "<div class=\"hero\"><div class=\"in\"><p>%s</p><img src=\"/assets/hero.jpg\" alt=\"AutoBleem 2\"></div></div>"
             % (e(title), PAGE_CSS, COPY_SCRIPT, e(tagline)))
@@ -1166,44 +1174,54 @@ def imager_notice(base_url):
             % "".join(rows))
 
 
+def chan_pill(text, cls=""):
+    """a version as a channel pill: rel release, pre pre-release, dev development build"""
+    return "<span class=\"chan %s\">%s</span>" % (cls, html.escape(text)) if text else ""
+
+
+def file_row(label, f, version="", cls="", note="", badge="", icon=""):
+    """one file: what it is (a note under it, a badge after it, a picture before it), its version as a channel
+    pill, the file, its size and the day it went up (the full time on hover). The file is a button named by its
+    type, the whole name on hover - the names carry the version again and wrapped mid-word in a narrow column"""
+    e = html.escape
+    when = f.get("uploaded", "")
+    m = re.search(r"\.(tar\.gz|img\.xz|zip|exe|txt|db|pdf|chd|pbp|7z)$", f["name"])
+    return ("<tr><td class=\"what\">%s%s%s%s</td><td>%s</td><td class=\"file\"><a href=\"%s\" title=\"%s\">%s</a></td>"
+            "<td class=\"size\">%s</td><td class=\"when\" title=\"%s\">%s</td></tr>" % (
+                "<img class=\"icon\" src=\"%s\" alt=\"\" loading=\"lazy\">" % e(icon) if icon else "",
+                e(label), "<span class=\"badge\">%s</span>" % e(badge) if badge else "",
+                "<small>%s</small>" % note if note else "", chan_pill(version, cls),
+                e(f["url"]), e(f["name"]), e(m.group(1) if m else "file"), human(f["size"]), e(when), e(when[:10])))
+
+
+def files_table(rows):
+    if not rows:
+        return ""
+    body = "".join(rows)
+    if "class=\"chan" not in body:
+        # nothing in it has a version (the manuals, the cover databases): no empty column
+        return ("<table><thead><tr><th>What</th><th>Download</th><th class=\"size\">Size</th><th class=\"when\">Date</th>"
+                "</tr></thead><tbody>%s</tbody></table>" % body.replace("<td></td><td class=\"file\">", "<td class=\"file\">"))
+    return ("<table><thead><tr><th>What</th><th>Version</th><th>Download</th><th class=\"size\">Size</th>"
+            "<th class=\"when\">Date</th></tr></thead><tbody>%s</tbody></table>" % "".join(rows))
+
+
+def folded_inputs(summary, body):
+    """build inputs, folded: a user installs from the table above, the installers and CI from these"""
+    return ("<details class=\"inputs\"><summary><b>Build inputs</b> %s</summary><div>%s</div></details>"
+            % (summary, body))
+
+
 def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc_cores, samples=None, psc_libs=None,
-                 psc_apps=None, psc_bios=None, pc=None, pcsx=None, manuals=None, psc_kernel=None, nightly=None):
+                 psc_apps=None, psc_bios=None, pc=None, pcsx=None, manuals=None, psc_kernel=None, nightly=None,
+                 store=None):
     """The page: a tab per platform, each leading with what a user installs from (the installer, the images,
     the packages) in one table across the three channels - the latest release, the one pre-release, the
     newest development build - and, folded away under it, the build inputs the installers, the image build and
     the CI fetch from here (RetroArch builds, cores, libraries, the kernel payload, the cover databases)."""
     e = html.escape
 
-    def chan(text, cls=""):
-        return "<span class=\"chan %s\">%s</span>" % (cls, e(text)) if text else ""
-
-    def row(label, f, version="", cls="", note="", badge=""):
-        """one file: what it is (a note under it, a badge after it), its version as a channel pill, the file,
-        its size and the day it went up (the full time on hover). The file is a button named by its type, the
-        whole name on hover - the names carry the version again and wrapped mid-word in a narrow column"""
-        when = f.get("uploaded", "")
-        m = re.search(r"\.(tar\.gz|img\.xz|zip|exe|txt|db|pdf)$", f["name"])
-        return ("<tr><td class=\"what\">%s%s%s</td><td>%s</td><td class=\"file\"><a href=\"%s\" title=\"%s\">%s</a></td>"
-                "<td class=\"size\">%s</td><td class=\"when\" title=\"%s\">%s</td></tr>" % (
-                    e(label), "<span class=\"badge\">%s</span>" % e(badge) if badge else "",
-                    "<small>%s</small>" % note if note else "", chan(version, cls),
-                    e(f["url"]), e(f["name"]), e(m.group(1) if m else "file"), human(f["size"]), e(when), e(when[:10])))
-
-    def table(rows):
-        if not rows:
-            return ""
-        body = "".join(rows)
-        if "class=\"chan" not in body:
-            # nothing in it has a version (the manuals, the cover databases): no empty column
-            return ("<table><thead><tr><th>What</th><th>Download</th><th class=\"size\">Size</th><th class=\"when\">Date</th>"
-                    "</tr></thead><tbody>%s</tbody></table>" % body.replace("<td></td><td class=\"file\">", "<td class=\"file\">"))
-        return ("<table><thead><tr><th>What</th><th>Version</th><th>Download</th><th class=\"size\">Size</th>"
-                "<th class=\"when\">Date</th></tr></thead><tbody>%s</tbody></table>" % "".join(rows))
-
-    def inputs(summary, body):
-        """the build inputs, folded: a user installs from the table above, the installers and CI from these"""
-        return ("<details class=\"inputs\"><summary><b>Build inputs</b> %s</summary><div>%s</div></details>"
-                % (summary, body))
+    chan, row, table, inputs = chan_pill, file_row, files_table, folded_inputs
 
     stable = [r for r in releases if not r["prerelease"]]
     pre = [r for r in releases if r["prerelease"]]
@@ -1384,8 +1402,12 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
         out.append(inputs("what the setup step fetches (libretro's servers are the fallback)", table(rows)))
 
     # ---- every platform ----
-    if dbs or samples or pcsx or manuals:
+    if dbs or samples or pcsx or manuals or store:
         out.append("<h2 class=\"plat\" id=\"inputs\">Every platform</h2>")
+    if store:
+        out.append("<div class=\"panel\" id=\"store\"><h2>AutoBleem Store</h2><p>Apps and games the launcher's Store "
+                   "installs with one press - %d items today. <a href=\"/store/\">See what it offers &rarr;</a></p></div>"
+                   % sum(len(v) for v in store.values()))
     if manuals:
         out.append("<div class=\"panel\" id=\"manuals\"><h2>User manual</h2>"
                    "<p>Installing on every platform, the launcher and its screens, the console tools.</p>")
@@ -1432,13 +1454,80 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
     return "\n".join(out) + "\n"
 
 
+# the Store's platforms, as its page shows them: key, tab, sub-tab (the two Raspberry Pi flavours share a tab)
+STORE_PLATFORMS = [
+    ("psc", "PlayStation Classic", ""),
+    ("rpi", "Raspberry Pi", "32-bit"),
+    ("rpi64", "Raspberry Pi", "64-bit"),
+    ("pcusb", "PC USB stick", ""),
+    ("win", "Windows", ""),
+]
+
+
+def render_store(base_url, store):
+    """store/index.html: what the AutoBleem Store offers, a tab per system - the Apps and the games in the
+    downloads page's table (each with its picture, its description, author and licence), the catalog the
+    Store reads folded under them. The page the site shows at /store/ instead of the bare file list."""
+    e = html.escape
+    out = [page_head("AutoBleem Store", "Apps and games for AutoBleem, installed from the launcher.")]
+    out.append("<main>")
+    out.append("<p class=\"lede\">What the <b>AutoBleem Store</b> offers on each system. It is an extension of the "
+               "launcher: <b>L2+R2 &rarr; Extensions &rarr; AutoBleem Store</b> installs these with one press, "
+               "and keeps them up to date. The files are here too. Your own lists of downloads go in the Store's "
+               "<b>Sources</b> tab. <a href=\"/\">&larr; Downloads</a></p>")
+
+    def section(platform):
+        items = store.get(platform) or []
+        body = []
+        for kind, heading in (("app", "Apps"), ("ps1", "Games")):
+            rows = []
+            for i in sorted((i for i in items if i["kind"] == kind), key=lambda i: i["title"].lower()):
+                note = e(i.get("description", ""))
+                credits = " &middot; ".join(e(x) for x in (i.get("author"), i.get("licence")) if x)
+                if credits:
+                    note += ("<br>" if note else "") + credits
+                for n, f in enumerate(i["files"]):
+                    label = i["title"] if len(i["files"]) == 1 else "%s, disc %d" % (i["title"], f.get("disc", n + 1))
+                    rows.append(file_row(label, f, i.get("version", "") if n == 0 else "", "rel",
+                                         note if n == 0 else "", icon=i.get("image", "") if n == 0 else ""))
+            if rows:
+                body.append("<div class=\"panel\"><h2>%s</h2>%s</div>" % (heading, files_table(rows)))
+        if not body:
+            body.append("<div class=\"panel\"><p>Nothing for this system yet.</p></div>")
+        if platform in store:
+            catalog = "%s/store/%s/catalog.json" % (base_url, platform)
+            body.append(folded_inputs("the catalog the Store reads",
+                                      "<p><a href=\"%s\">%s</a> - JSON, every file with its size and SHA-256.</p>"
+                                      % (e(catalog), e(catalog))))
+        return "".join(body)
+
+    shown = [p for p in STORE_PLATFORMS if p[0] in store or p[0] != "win"]
+    tabs = []
+    for key, tab, sub in shown:
+        if tab not in tabs:
+            tabs.append(tab)
+    for tab in tabs:
+        members = [(key, sub) for key, t, sub in shown if t == tab]
+        out.append("<h2 class=\"plat\" id=\"%s\">%s</h2>" % (members[0][0] if len(members) == 1 else
+                                                              re.sub(r"[^a-z]", "", tab.lower()), e(tab)))
+        if len(members) == 1:
+            out.append(section(members[0][0]))
+        else:
+            for key, sub in members:
+                out.append("<h3 class=\"subtab\" id=\"%s\">%s</h3>%s" % (key, e(sub), section(key)))
+    out = tabbed(out)
+    out.append("<footer>Generated %s UTC &middot; theme: ab2</footer></main></body></html>"
+               % datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"))
+    return "\n".join(out) + "\n"
+
+
 def tabbed(out):
     """The page's platform sections - everything from each <h2 class="plat" id=...> to the next - as tabs:
     a tab bar after the intro panel, one <section class="tab"> per platform, a few lines of script that
     show the one named in the URL's #hash (the first otherwise) and keep the hash in step. Without script
     every section is shown in turn, headings and all, as before."""
     html_text = "\n".join(out)
-    parts = re.split(r'<h2 class="plat" id="([a-z]+)">([^<]+)</h2>', html_text)
+    parts = re.split(r'<h2 class="plat" id="([a-z0-9]+)">([^<]+)</h2>', html_text)
     if len(parts) < 3:
         return out
     head, rest = parts[0], parts[1:]
@@ -1449,7 +1538,7 @@ def tabbed(out):
     def subtabbed(parent, body):
         """a section with <h3 class="subtab" id=...> headings becomes a pill bar and one <section
         class="subtab"> per heading (the PC's two products); one without is returned as it is"""
-        sub_parts = re.split(r'<h3 class="subtab" id="([a-z-]+)">([^<]+)</h3>', body)
+        sub_parts = re.split(r'<h3 class="subtab" id="([a-z0-9-]+)">([^<]+)</h3>', body)
         if len(sub_parts) < 3:
             return body
         intro, sub_rest = sub_parts[0], sub_parts[1:]
@@ -1754,15 +1843,20 @@ def main():
     samples = index_samples(repo, base_url)
     manuals = index_manuals(repo, base_url)
     nightly = index_nightly(repo, base_url)
-    store = index_store(repo, base_url)
+    store_pages = {}
+    store = index_store(repo, base_url, store_pages)
     pcsx = {name: index_pcsx(repo, base_url, name) for name, _, _ in EMULATORS}
     pcsx = {name: b for name, b in pcsx.items() if b}
     pc = {"builds": pc_builds, "cores": pc_cores, "images": pc_images, "win": win}
-    for name, page in (("index.html", render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc_cores, samples, psc_libs, psc_apps, psc_bios, pc, pcsx, manuals, psc_kernel,
-                                                       nightly)),
-                       ("rpi-install.html", render_rpi_install(base_url, images)),
-                       ("pc-install.html", render_pc_install(base_url, pc_images))):
-        tmp = os.path.join(repo, ".%s.tmp" % name)
+    pages = [("index.html", render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc_cores, samples,
+                                         psc_libs, psc_apps, psc_bios, pc, pcsx, manuals, psc_kernel, nightly,
+                                         store_pages)),
+             ("rpi-install.html", render_rpi_install(base_url, images)),
+             ("pc-install.html", render_pc_install(base_url, pc_images))]
+    if os.path.isdir(os.path.join(repo, "store")):
+        pages.append((os.path.join("store", "index.html"), render_store(base_url, store_pages)))
+    for name, page in pages:
+        tmp = os.path.join(repo, os.path.dirname(name), ".%s.tmp" % os.path.basename(name))
         with open(tmp, "w", encoding="utf-8") as f:
             f.write(page)
         os.replace(tmp, os.path.join(repo, name))
