@@ -82,3 +82,19 @@ def test_the_store_page_without_packages_is_as_before():
     assert "The Store itself" not in page
     assert "lanserver" not in page
     assert "id=\"win\"" not in page
+
+
+def test_lan_share_is_offered_in_the_lan_server_tab():
+    with tempfile.TemporaryDirectory() as repo:
+        now = time.time()
+        folder = os.path.join(repo, "extensions", "lanshare", "20260925-abc1234")
+        path = os.path.join(folder, "lanshare-windows-x86_64-20260925-abc1234.zip")
+        write(path)
+        repo_index.sidecar_sha256(path)
+        os.utime(path + ".sha256", (now, now))
+        found = repo_index.index_extensions(repo, "https://site")
+        assert found["lanshare"]["development"]["files"][0]["pkg"] == "lanshare"
+        page = repo_index.render_store("https://site", {}, None, found["lanshare"])
+        assert "id=\"lanserver\"" in page
+        assert "LAN Share for Windows" in page
+        assert "lanshare-windows-x86_64-20260925-abc1234.zip" in page

@@ -40,7 +40,8 @@ set by the launcher's `docs/store-plan.md`.
   build (`1.2.3-<date>-<commit>`) published after it, and writes `extensions/<name>/latest.json`. The Store
   page shows them: each system's tab opens with a **The Store itself** panel (release, then "dev <version>"),
   Windows gets its tab once it has the extension, and a **LAN server** tab lists abstored per machine with
-  the Linux setup guide folded under Build inputs. Tested in `tests/test_extension_index.py`.
+  the Linux setup guide folded under Build inputs; LAN Share (pc-tools' Windows app, `extensions/lanshare/`,
+  `lanshare-windows-x86_64-<v>.zip`) is listed there too. Tested in `tests/test_extension_index.py`.
 
 ## The pages' look and structure - the rules (the owner's, 2026-09-23)
 

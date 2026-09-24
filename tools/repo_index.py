@@ -110,7 +110,7 @@ EMULATORS = (
 # an extension's packages under extensions/<name>/<version>/ (its repository's ci/build.sh): the extension for
 # each platform, ext_<name>-<platform>-<version>.zip, and whatever programs come with it - the Store's LAN
 # server, abstored-<os>-<arch>-<version>.tar.gz|zip
-EXTENSION_RE = re.compile(r"^(?P<pkg>ext_[a-z0-9_]+|abstored)-(?P<plat>psc|rpi|rpi64|pcusb|win|linux-x86_64|linux-i386|"
+EXTENSION_RE = re.compile(r"^(?P<pkg>ext_[a-z0-9_]+|abstored|lanshare)-(?P<plat>psc|rpi|rpi64|pcusb|win|linux-x86_64|linux-i386|"
                           r"linux-armhf|linux-arm64|windows-x86_64)-(?P<version>.+)\.(zip|tar\.gz)$")
 ABSTORED_PLATFORMS = (("linux-x86_64", "Linux PC, 64-bit"), ("linux-i386", "Linux PC, 32-bit"),
                       ("linux-arm64", "Linux ARM, 64-bit"), ("linux-armhf", "Linux ARM, 32-bit"),
@@ -1529,20 +1529,21 @@ STORE_PLATFORMS = [
 ]
 
 
-def render_store(base_url, store, extension=None):
+def render_store(base_url, store, extension=None, lanshare=None):
     """store/index.html: what the AutoBleem Store offers, a tab per system - the Store itself for that system
     (the extension's packages, index_extensions' "store"), then the Apps and the games in the downloads page's
     table (each with its picture, its description, author and licence), the catalog the Store reads folded
-    under them - and a LAN server tab with abstored for each machine that serves. The page the site shows at
-    /store/ instead of the bare file list."""
+    under them - and a LAN server tab with abstored for each machine that serves, and LAN Share (pc-tools, the
+    Windows app that puts games on it; index_extensions' "lanshare"). The page the site shows at /store/ instead
+    of the bare file list."""
     e = html.escape
     extension = extension or {}
 
-    def packages(pkg, plat):
+    def packages(pkg, plat, source=None):
         """the rows of one package for one platform: the release, then a newer development build"""
         rows = []
         for channel, cls in (("release", "rel"), ("development", "dev")):
-            build = extension.get(channel)
+            build = (extension if source is None else source).get(channel)
             for f in (build or {}).get("files", []):
                 if f["pkg"] == pkg and f["plat"] == plat:
                     # the downloads page's labels: a release's version, "dev <version>" for a development build
@@ -1605,13 +1606,24 @@ def render_store(base_url, store, extension=None):
     # abstored, the Store's LAN server: for the machine that holds the games, not the one that plays them
     server = [file_row(label, f, version, cls) for plat, label in ABSTORED_PLATFORMS
               for f, version, cls in packages("abstored", plat)]
-    if server:
+    share = [file_row("LAN Share for Windows", f, version, cls)
+             for f, version, cls in packages("lanshare", "windows-x86_64", lanshare or {})]
+    if server or share:
         out.append("<h2 class=\"plat\" id=\"lanserver\">LAN server</h2>")
+    if server:
         out.append("<div class=\"panel\"><h2>abstored</h2><p>Shares a folder of your own PS1 games with the "
                    "Store on your home network: run it on the PC, NAS or Raspberry Pi that holds the games, then "
                    "add <code>http://&lt;that machine&gt;:8124/store.tsv</code> in the Store's <b>Sources</b> "
-                   "tab. It only reads the folder. Plain HTTP, for a home network only.</p>%s</div>"
-                   % files_table(server))
+                   "tab. It only reads the folder unless it is started with <code>--allow-uploads</code> (for "
+                   "LAN Share, below). Plain HTTP, for a home network only.</p>%s</div>" % files_table(server))
+    if share:
+        out.append("<div class=\"panel\"><h2>LAN Share</h2><p>The Windows app that puts games on that server: "
+                   "it publishes the games in a folder on the PC, and reads a PS1 disc in the PC's drive into a "
+                   "<code>.bin</code>/<code>.cue</code> and publishes it - through the server's network share, "
+                   "or uploaded with its token. It shows what the server has, skips what is there already, and "
+                   "takes games off it (into a <code>.removed</code> folder, never deleted).</p>%s</div>"
+                   % files_table(share))
+    if server or share:
         out.append(folded_inputs("how to set it up",
                                  "<p><a href=\"https://github.com/autobleem2/ext_store/blob/develop/server/"
                                  "INSTALL-linux.md\">Building it and running it as a service on Linux</a> "
@@ -1956,10 +1968,10 @@ def main():
                                          store_pages)),
              ("rpi-install.html", render_rpi_install(base_url, images)),
              ("pc-install.html", render_pc_install(base_url, pc_images))]
-    if os.path.isdir(os.path.join(repo, "store")) or extensions.get("store"):
+    if os.path.isdir(os.path.join(repo, "store")) or extensions.get("store") or extensions.get("lanshare"):
         os.makedirs(os.path.join(repo, "store"), exist_ok=True)
         pages.append((os.path.join("store", "index.html"),
-                      render_store(base_url, store_pages, extensions.get("store"))))
+                      render_store(base_url, store_pages, extensions.get("store"), extensions.get("lanshare"))))
     for name, page in pages:
         tmp = os.path.join(repo, os.path.dirname(name), ".%s.tmp" % os.path.basename(name))
         with open(tmp, "w", encoding="utf-8") as f:
