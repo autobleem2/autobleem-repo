@@ -28,6 +28,9 @@
 #   tools/repo_publish.sh win-bios src/win/biospack-win64.txt                       -> win/bios/
 #   tools/repo_publish.sh store psc opentyrian-psc-2.1.zip opentyrian.item.json opentyrian.png
 #                                                                              -> store/psc/ (the AutoBleem Store's catalog)
+#   tools/repo_publish.sh extension store 1.0.0 dist/ext_store-*.zip dist/abstored-*  -> extensions/store/<version>/ (an
+#                                                                                 extension's own packages, from its CI;
+#                                                                                 newest release + a newer dev build kept)
 #   tools/repo_publish.sh psc-bios payload/RetroArch/bios/biospack.txt          -> psc/bios/ (the BIOS list the installer
 #                                                                                 fetches RetroBIOS's files by; the list only)
 #   tools/repo_publish.sh samples build_samples/samples-20260920.tar.gz build_samples/samples-20260920.json
@@ -72,7 +75,7 @@ LOCAL=0
 PARTIAL=0
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-usage() { sed -n '2,54p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,57p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -102,6 +105,7 @@ case "$KIND" in
     psc-apps)  [ $# -ge 1 ] || usage 1; DEST="psc/apps" ;;
     psc-bios)  [ $# -ge 1 ] || usage 1; DEST="psc/bios" ;;
     store)     [ $# -ge 2 ] || usage 1; PLATFORM="$1"; shift; DEST="store/$PLATFORM" ;;
+    extension) [ $# -ge 3 ] || usage 1; NAME="$1"; VERSION="$2"; shift 2; DEST="extensions/$NAME/$VERSION" ;;
     win-retroarch) [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="win/retroarch/$VERSION" ;;
     win-cores) [ $# -ge 1 ] || usage 1; DEST="win/cores" ;;
     win-bios)  [ $# -ge 1 ] || usage 1; DEST="win/bios" ;;

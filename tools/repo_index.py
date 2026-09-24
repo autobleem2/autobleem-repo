@@ -107,6 +107,14 @@ EMULATORS = (
      "(<a href=\"https://github.com/autobleem/pcsx-abnxt\">github.com/autobleem/pcsx-abnxt</a>). The launcher's "
      "Options -> \"PS1 Emulator\" picks it (<code>Autobleem/bin/emunxt/</code>)."),
 )
+# an extension's packages under extensions/<name>/<version>/ (its repository's ci/build.sh): the extension for
+# each platform, ext_<name>-<platform>-<version>.zip, and whatever programs come with it - the Store's LAN
+# server, abstored-<os>-<arch>-<version>.tar.gz|zip
+EXTENSION_RE = re.compile(r"^(?P<pkg>ext_[a-z0-9_]+|abstored)-(?P<plat>psc|rpi|rpi64|pcusb|win|linux-x86_64|linux-i386|"
+                          r"linux-armhf|linux-arm64|windows-x86_64)-(?P<version>.+)\.(zip|tar\.gz)$")
+ABSTORED_PLATFORMS = (("linux-x86_64", "Linux PC, 64-bit"), ("linux-i386", "Linux PC, 32-bit"),
+                      ("linux-arm64", "Linux ARM, 64-bit"), ("linux-armhf", "Linux ARM, 32-bit"),
+                      ("windows-x86_64", "Windows"))
 PCSX_PLATFORMS = (("psc", "PlayStation Classic"), ("rpi-armhf", "Raspberry Pi, 32-bit OS"),
                   ("rpi-arm64", "Raspberry Pi, 64-bit OS"), ("pcusb", "PC USB stick (32-bit Linux)"),
                   ("win64", "Windows"))
@@ -836,6 +844,61 @@ def index_pcsx(repo, base_url, name="pcsx-abnxt"):
 
 
 #*******************************
+# extensions
+#*******************************
+def extension_is_release(version):
+    """1.0.0 is a release (a v* tag's build); 1.0.0-20260924-a13e56a is a development build of develop"""
+    return re.fullmatch(r"\d+\.\d+\.\d+", version) is not None
+
+
+def index_extensions(repo, base_url):
+    """extensions/<name>/<version>/: an extension's packages as its CI publishes them (EXTENSION_RE). Kept: the
+    newest release, and the newest development build published after it - an older build of either goes.
+    extensions/<name>/latest.json says which, with every file. Returns {name: {"release": build,
+    "development": build}}, a build being {"version", "files": [entry + "pkg" + "plat"]}; either may be absent."""
+    out = {}
+    root = os.path.join(repo, "extensions")
+    if not os.path.isdir(root):
+        return out
+    for name in sorted(os.listdir(root)):
+        eroot = os.path.join(root, name)
+        if not os.path.isdir(eroot):
+            continue
+        builds = {}
+        for version in os.listdir(eroot):
+            folder = os.path.join(eroot, version)
+            if not os.path.isdir(folder):
+                continue
+            files, published = [], 0
+            for path in data_files(folder):
+                m = EXTENSION_RE.match(os.path.basename(path))
+                if not m or m.group("version") != version:
+                    continue
+                files.append(dict(file_entry(repo, base_url, path), pkg=m.group("pkg"), plat=m.group("plat")))
+                stamp = path + ".sha256"
+                published = max(published, os.path.getmtime(stamp if os.path.isfile(stamp) else path))
+            if files:
+                builds[version] = {"version": version, "files": files, "published": published}
+        if not builds:
+            continue
+        releases = [v for v in builds if extension_is_release(v)]
+        release = max(releases, key=lambda v: (tuple(int(x) for x in v.split(".")), builds[v]["published"])) \
+            if releases else None
+        devs = [v for v in builds if not extension_is_release(v)
+                and (release is None or builds[v]["published"] > builds[release]["published"])]
+        dev = max(devs, key=lambda v: builds[v]["published"]) if devs else None
+        prune([os.path.join(eroot, v) for v in builds if v not in (release, dev)], [], name + " build")
+        entry = {}
+        if release:
+            entry["release"] = {k: builds[release][k] for k in ("version", "files")}
+        if dev:
+            entry["development"] = {k: builds[dev][k] for k in ("version", "files")}
+        write_json(os.path.join(eroot, "latest.json"), entry)
+        out[name] = entry
+    return out
+
+
+#*******************************
 # sample games
 #*******************************
 def index_samples(repo, base_url):
@@ -1466,11 +1529,25 @@ STORE_PLATFORMS = [
 ]
 
 
-def render_store(base_url, store):
-    """store/index.html: what the AutoBleem Store offers, a tab per system - the Apps and the games in the
-    downloads page's table (each with its picture, its description, author and licence), the catalog the
-    Store reads folded under them. The page the site shows at /store/ instead of the bare file list."""
+def render_store(base_url, store, extension=None):
+    """store/index.html: what the AutoBleem Store offers, a tab per system - the Store itself for that system
+    (the extension's packages, index_extensions' "store"), then the Apps and the games in the downloads page's
+    table (each with its picture, its description, author and licence), the catalog the Store reads folded
+    under them - and a LAN server tab with abstored for each machine that serves. The page the site shows at
+    /store/ instead of the bare file list."""
     e = html.escape
+    extension = extension or {}
+
+    def packages(pkg, plat):
+        """the rows of one package for one platform: the release, then a newer development build"""
+        rows = []
+        for channel, cls in (("release", "rel"), ("development", "dev")):
+            build = extension.get(channel)
+            for f in (build or {}).get("files", []):
+                if f["pkg"] == pkg and f["plat"] == plat:
+                    # the downloads page's labels: a release's version, "dev <version>" for a development build
+                    rows.append((f, build["version"] if cls == "rel" else "dev " + build["version"], cls))
+        return rows
     out = [page_head("AutoBleem Store", "Apps and games for AutoBleem, installed from the launcher.")]
     out.append("<main>")
     out.append("<p class=\"lede\">What the <b>AutoBleem Store</b> offers on each system. It is an extension of the "
@@ -1481,6 +1558,13 @@ def render_store(base_url, store):
     def section(platform):
         items = store.get(platform) or []
         body = []
+        own = packages("ext_store", platform)
+        if own:
+            rows = [file_row("AutoBleem Store", f, version, cls) for f, version, cls in own]
+            body.append("<div class=\"panel\"><h2>The Store itself</h2><p>Unzip it into the root of the stick "
+                        "(the data partition on a Raspberry Pi or the PC stick): it adds "
+                        "<code>Extensions/store/</code>. Then <b>L2+R2 &rarr; Extensions</b>.</p>%s</div>"
+                        % files_table(rows))
         for kind, heading in (("app", "Apps"), ("ps1", "Games")):
             rows = []
             for i in sorted((i for i in items if i["kind"] == kind), key=lambda i: i["title"].lower()):
@@ -1494,8 +1578,9 @@ def render_store(base_url, store):
                                          note if n == 0 else "", icon=i.get("image", "") if n == 0 else ""))
             if rows:
                 body.append("<div class=\"panel\"><h2>%s</h2>%s</div>" % (heading, files_table(rows)))
-        if not body:
-            body.append("<div class=\"panel\"><p>Nothing for this system yet.</p></div>")
+        if not items:
+            body.append("<div class=\"panel\"><p>%s</p></div>" % ("No Apps or games for this system yet." if own
+                                                                  else "Nothing for this system yet."))
         if platform in store:
             catalog = "%s/store/%s/catalog.json" % (base_url, platform)
             body.append(folded_inputs("the catalog the Store reads",
@@ -1503,7 +1588,7 @@ def render_store(base_url, store):
                                       % (e(catalog), e(catalog))))
         return "".join(body)
 
-    shown = [p for p in STORE_PLATFORMS if p[0] in store or p[0] != "win"]
+    shown = [p for p in STORE_PLATFORMS if p[0] in store or p[0] != "win" or packages("ext_store", p[0])]
     tabs = []
     for key, tab, sub in shown:
         if tab not in tabs:
@@ -1517,6 +1602,21 @@ def render_store(base_url, store):
         else:
             for key, sub in members:
                 out.append("<h3 class=\"subtab\" id=\"%s\">%s</h3>%s" % (key, e(sub), section(key)))
+    # abstored, the Store's LAN server: for the machine that holds the games, not the one that plays them
+    server = [file_row(label, f, version, cls) for plat, label in ABSTORED_PLATFORMS
+              for f, version, cls in packages("abstored", plat)]
+    if server:
+        out.append("<h2 class=\"plat\" id=\"lanserver\">LAN server</h2>")
+        out.append("<div class=\"panel\"><h2>abstored</h2><p>Shares a folder of your own PS1 games with the "
+                   "Store on your home network: run it on the PC, NAS or Raspberry Pi that holds the games, then "
+                   "add <code>http://&lt;that machine&gt;:8124/store.tsv</code> in the Store's <b>Sources</b> "
+                   "tab. It only reads the folder. Plain HTTP, for a home network only.</p>%s</div>"
+                   % files_table(server))
+        out.append(folded_inputs("how to set it up",
+                                 "<p><a href=\"https://github.com/autobleem2/ext_store/blob/develop/server/"
+                                 "INSTALL-linux.md\">Building it and running it as a service on Linux</a> "
+                                 "&middot; <a href=\"https://github.com/autobleem2/ext_store/blob/develop/server/"
+                                 "README.md\">every option</a></p>"))
     out = tabbed(out)
     out.append("<footer>Generated %s UTC &middot; theme: ab2</footer></main></body></html>"
                % datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"))
@@ -1847,6 +1947,7 @@ def main():
     nightly = index_nightly(repo, base_url)
     store_pages = {}
     store = index_store(repo, base_url, store_pages)
+    extensions = index_extensions(repo, base_url)
     pcsx = {name: index_pcsx(repo, base_url, name) for name, _, _ in EMULATORS}
     pcsx = {name: b for name, b in pcsx.items() if b}
     pc = {"builds": pc_builds, "cores": pc_cores, "images": pc_images, "win": win}
@@ -1855,8 +1956,10 @@ def main():
                                          store_pages)),
              ("rpi-install.html", render_rpi_install(base_url, images)),
              ("pc-install.html", render_pc_install(base_url, pc_images))]
-    if os.path.isdir(os.path.join(repo, "store")):
-        pages.append((os.path.join("store", "index.html"), render_store(base_url, store_pages)))
+    if os.path.isdir(os.path.join(repo, "store")) or extensions.get("store"):
+        os.makedirs(os.path.join(repo, "store"), exist_ok=True)
+        pages.append((os.path.join("store", "index.html"),
+                      render_store(base_url, store_pages, extensions.get("store"))))
     for name, page in pages:
         tmp = os.path.join(repo, os.path.dirname(name), ".%s.tmp" % os.path.basename(name))
         with open(tmp, "w", encoding="utf-8") as f:
@@ -1864,6 +1967,8 @@ def main():
         os.replace(tmp, os.path.join(repo, name))
     if store:
         print("store: " + ", ".join("%s %d items" % (p, n) for p, n in store.items()))
+    for name, entry in extensions.items():
+        print("extension %s: %s" % (name, ", ".join("%s %s" % (c, b["version"]) for c, b in entry.items())))
     print("%s: %d releases, %d RetroArch builds, %d cores tarballs, %d PSC RetroArch builds, %s PSC cores, %d image sets, "
           "%d PC RetroArch builds, %d PC cores tarballs, %d PC image sets, %d databases, %s sample pack, %d manuals" % (
         repo, len(releases), len(builds), len(cores), len(psc_builds), "1" if psc_cores else "0", len(images),

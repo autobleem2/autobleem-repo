@@ -33,6 +33,14 @@ set by the launcher's `docs/store-plan.md`.
   (`file_row`/`files_table`, module-level now and shared with `render_index`; an item's picture floats in its
   What cell), and the catalog's URL folded under **Build inputs**. The top bar links it as **Store**; the
   landing page's Every platform tab has a short AutoBleem Store panel pointing at it.
+- **The Store itself** (2026-09-24): an extension's own packages live in `extensions/<name>/<version>/`,
+  published by its repository's CI with `repo_publish.sh --local extension <name> <version> FILES...` (ext_store's
+  `site` job, on the self-hosted runner). `index_extensions()` (`EXTENSION_RE`: `ext_<name>-<platform>-<v>.zip`
+  and `abstored-<os>-<arch>-<v>.tar.gz|zip`) keeps the newest release (`1.2.3`) and the newest development
+  build (`1.2.3-<date>-<commit>`) published after it, and writes `extensions/<name>/latest.json`. The Store
+  page shows them: each system's tab opens with a **The Store itself** panel (release, then "dev <version>"),
+  Windows gets its tab once it has the extension, and a **LAN server** tab lists abstored per machine with
+  the Linux setup guide folded under Build inputs. Tested in `tests/test_extension_index.py`.
 
 ## The pages' look and structure - the rules (the owner's, 2026-09-23)
 
