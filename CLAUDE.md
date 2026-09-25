@@ -16,6 +16,10 @@ Selawik Light, the emblem).
   a browser - desktop and phone width - before publishing.
 - A `--local` publish run as root (a CI container) hands the tree back to its owner at the end; a failed
   generator is replaced by the previous one *with its merge base*.
+- `mirror/<name>/` holds third-party files our builds fetch (`repo_publish.sh mirror <name> FILES`), such as
+  an App's freeware game data (`mirror/opentyrian/tyrian21.zip`, which `app_opentyrian`'s `ci/build.sh` pins
+  by sha256). The page does not list it and the index never prunes it; a file there is never replaced in
+  place - a new version is a new file name.
 
 ## The AutoBleem Store's catalog (2026-09-24)
 

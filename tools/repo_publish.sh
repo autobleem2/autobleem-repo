@@ -41,6 +41,9 @@
 #   tools/repo_publish.sh manuals build_manuals/*/*.pdf                        -> manuals/ (the user manuals, one PDF
 #                                                                                 per language - tools/build_manuals.py)
 #   tools/repo_publish.sh db db/covers*.db                                     -> db/
+#   tools/repo_publish.sh mirror opentyrian tyrian21.zip                       -> mirror/opentyrian/ (third-party files a
+#                                                                                 build fetches - an App's freeware game
+#                                                                                 data - kept as they are, never indexed)
 #   tools/repo_publish.sh assets                                               -> assets/ (tools/repo_assets.py)
 #   tools/repo_publish.sh index                                                just regenerate the index
 #   tools/repo_publish.sh --partial nightly <version> FILES...                 part of a development build that is still
@@ -75,7 +78,7 @@ LOCAL=0
 PARTIAL=0
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-usage() { sed -n '2,57p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,60p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -114,6 +117,7 @@ case "$KIND" in
     pcsx-ab)   [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="emu/pcsx-ab/$VERSION" ;;
     manuals)   [ $# -ge 1 ] || usage 1; DEST="manuals" ;;
     db)        [ $# -ge 1 ] || usage 1; DEST="db" ;;
+    mirror)    [ $# -ge 2 ] || usage 1; NAME="$1"; shift; DEST="mirror/$NAME" ;;
     assets)    DEST="assets" ;;
     index)     DEST="" ;;
     *)         echo "unknown kind: $KIND" >&2; usage 1 ;;
