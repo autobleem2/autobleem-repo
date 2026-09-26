@@ -314,10 +314,36 @@ def index_releases(repo, base_url):
     for name, which in (("latest.json", stable), ("unstable.json", pre)):
         path = os.path.join(root, name)
         if which:
-            write_json(path, which[-1])
+            write_json(path, unstable_view(which[-1]) if name == "unstable.json" else which[-1])
         elif os.path.isfile(path):
             os.remove(path)
     return stable + pre
+
+
+# R1-safety.md #3: a psc console on the testing channel cannot be offered a pre-release through
+# unstable.json - the console's update_service.cpp stops at the first list that PARSES, whichever
+# channel it is (it does not check the list actually has a psc file), so a psc pre-release named
+# in unstable.json that a console then can't apply - or a bad one it can - has no second list to
+# fall back to and would offer the same "update" forever. Fix is deliberately data-only, not code
+# in the console: unstable.json simply never carries a "psc" file - a psc tester goes through the
+# nightly channel instead (channelFiles("nightly") tries nightly/latest.json first). release.json,
+# the "releases" list the download page and the installer's channelRelease/channelLists build their
+# rows from, and the pre-release folder's own files are untouched - the page still lists the
+# pre-release's psc zip as a manual download, and InstallerJob::channelRelease already skips a list
+# with no "psc-fs" entry to try the next one, so both already show the nightly release for psc once
+# a pre-release carries none (verified by reading, not by a code change there).
+UNSTABLE_EXCLUDED_KINDS = ("psc",)
+
+
+def unstable_view(release):
+    """`release`, minus the file kinds unstable.json must never carry (see UNSTABLE_EXCLUDED_KINDS) -
+    a shallow copy: the caller's `release` dict (and the "files" dict written into release.json /
+    returned to render_index) is never mutated."""
+    if not any(kind in release["files"] for kind in UNSTABLE_EXCLUDED_KINDS):
+        return release
+    view = dict(release)
+    view["files"] = {k: v for k, v in release["files"].items() if k not in UNSTABLE_EXCLUDED_KINDS}
+    return view
 
 
 #*******************************
