@@ -14,15 +14,25 @@ os.environ["AB_ADMIN_NO_APP"] = "1"
 from app import main  # noqa: E402
 from app.actions import next_tag  # noqa: E402
 from app.config import Settings  # noqa: E402
+from app.github import GitHubError  # noqa: E402
 from app.notify import Notifier  # noqa: E402
 from app.runs import Runs, median_duration  # noqa: E402
 
 
 def run(i, status="completed", conclusion="success", start="2026-09-23T10:00:00Z", end="2026-09-23T10:10:00Z",
-        workflow=7, branch="develop"):
+        workflow=7, branch="develop", created="2026-09-23T09:59:00Z"):
     return {"id": i, "name": "build", "workflow_id": workflow, "display_title": "t%d" % i, "head_branch": branch,
-            "event": "push", "status": status, "conclusion": conclusion, "run_started_at": start,
-            "updated_at": end, "html_url": "https://github.com/x/%d" % i, "actor": {"login": "someone"}}
+            "event": "push", "status": status, "conclusion": conclusion, "created_at": created,
+            "run_started_at": start, "updated_at": end, "html_url": "https://github.com/x/%d" % i,
+            "actor": {"login": "someone"}}
+
+
+DEFAULT_JOBS = [{"name": "build (psc)", "status": "in_progress", "html_url": "u", "runner_name": "runner-1",
+                 "labels": ["self-hosted", "psc"],
+                 "steps": [{"number": 1, "name": "Checkout", "status": "completed", "conclusion": "success",
+                            "started_at": "2026-09-23T10:00:00Z", "completed_at": "2026-09-23T10:00:05Z"},
+                           {"number": 2, "name": "Build", "status": "in_progress", "conclusion": None,
+                            "started_at": "2026-09-23T10:00:05Z", "completed_at": None}]}]
 
 
 class FakeGitHub:
@@ -32,7 +42,12 @@ class FakeGitHub:
         self.tokens = {"tok-alice": "alice", "tok-bob": "bob", "tok-eve": "eve"}
         self.calls = []
         self.runs = {"autobleem": [run(1, "in_progress", None, end=None), run(2)]}
+        self.jobs = {1: DEFAULT_JOBS}
         self.tags = ["v2.0.0-alpha1", "v2.0.0-alpha2", "nightly"]
+        self.runners = [{"id": 1, "name": "runner-1", "status": "online", "busy": True,
+                         "labels": [{"name": "self-hosted"}, {"name": "psc"}]},
+                        {"id": 2, "name": "runner-2", "status": "offline", "busy": False, "labels": []}]
+        self.runners_status = 200
 
     def cached(self, key, ttl, fn):
         return fn()
@@ -48,12 +63,17 @@ class FakeGitHub:
 
     def call(self, method, path, body=None):
         self.calls.append((method, path, body))
+        if "/actions/runners?per_page" in path:
+            if self.runners_status != 200:
+                raise GitHubError(self.runners_status, "no access")
+            return {"runners": self.runners}
         if "/actions/runs?per_page" in path:
             return {"workflow_runs": self.runs.get(path.split("/")[3], [])}
         if "/workflows/" in path and "status=success" in path:
             return {"workflow_runs": [run(10, start="2026-09-23T09:00:00Z", end="2026-09-23T09:20:00Z")]}
-        if path.endswith("/jobs?per_page=50"):
-            return {"jobs": [{"name": "build (psc)", "status": "in_progress", "html_url": "u"}]}
+        if "/jobs?per_page=50" in path:
+            run_id = int(path.split("/runs/")[1].split("/")[0])
+            return {"jobs": self.jobs.get(run_id, [])}
         if path.endswith("/tags?per_page=100"):
             return [{"name": t} for t in self.tags]
         return {}
@@ -69,6 +89,13 @@ def setup(tmp_path):
     (repo / "releases" / "latest.json").write_text(json.dumps({"version": "v2.0.0-alpha2", "prerelease": True}))
     (repo / "nightly" / "latest.json").write_text(json.dumps(
         {"version": "v2.0.0-alpha2-25-g7a37132", "files": {"psc-fs": {}}, "images": {"armhf": {}}}))
+    (repo / "store" / "psc").mkdir(parents=True)
+    (repo / "store" / "psc" / "catalog.json").write_text(json.dumps({
+        "schema": 1, "platform": "psc", "date": "2026-09-25",
+        "items": [{"id": "app/opentyrian", "kind": "app", "title": "OpenTyrian", "version": "2.1",
+                  "files": [{"name": "opentyrian-psc-2.1.zip", "size": 4_200_000}]},
+                 {"id": "ps1/example", "kind": "ps1", "title": "Example Game", "version": "1.0",
+                  "files": [{"name": "example.zip", "size": 100_000_000}, {"name": "example.png", "size": 12345}]}]}))
     settings = Settings(repo_dir=str(repo), data_dir=str(tmp_path / "data"), repos=["autobleem"])
     gh = FakeGitHub()
     client = TestClient(main.create_app(settings, gh=gh, start_notifier=False))
@@ -137,6 +164,62 @@ def test_status_and_time_left(setup):
     now = datetime(2026, 9, 23, 10, 5, tzinfo=timezone.utc)
     active = runs.status(now=now)["active"][0]
     assert (active["elapsed"], active["left"]) == (300, 900)
+
+
+def test_job_steps_and_progress(setup):
+    client, gh, _ = setup
+    s = client.get("/admin/api/status", headers=browser("bob")).json()
+    job = s["active"][0]["jobs"][0]
+    assert job["labels"] == ["self-hosted", "psc"]
+    assert [(st["number"], st["name"], st["status"]) for st in job["steps"]] == [
+        (1, "Checkout", "completed"), (2, "Build", "in_progress")]
+    assert s["active"][0]["progress"] == {"done": 1, "total": 2}
+
+
+def test_status_queue(setup):
+    client, gh, _ = setup
+    gh.runs["autobleem"].append(run(3, "queued", None, start=None, end=None))
+    gh.jobs[1] = [dict(DEFAULT_JOBS[0], status="in_progress"),
+                 {"name": "build (win)", "status": "queued", "html_url": "u2",
+                  "labels": ["self-hosted", "win"], "started_at": None, "steps": []}]
+    s = client.get("/admin/api/status", headers=browser("bob")).json()
+    kinds = {(q["repo"], q["run_id"], q["job"]) for q in s["queue"]}
+    assert ("autobleem", 3, None) in kinds  # a whole run still waiting for a runner
+    assert ("autobleem", 1, "build (win)") in kinds  # a queued job inside an already-running run
+    # oldest first
+    assert s["queue"][0]["waiting"] is not None
+
+
+def test_status_runners(setup):
+    client, gh, _ = setup
+    s = client.get("/admin/api/status", headers=browser("bob")).json()
+    runners = {r["name"]: r for r in s["runners"]}
+    assert runners["runner-1"]["status"] == "online" and runners["runner-1"]["busy"] is True
+    assert runners["runner-1"]["job"] == {"repo": "autobleem", "run_id": 1, "job": "build (psc)"}
+    assert runners["runner-2"]["job"] is None
+    # a 403 (no permission yet) must not blank the rest of the status
+    gh.runners_status = 403
+    s = client.get("/admin/api/status", headers=browser("bob")).json()
+    assert s["runners"] == []
+    assert any(e["repo"] == "(runners)" for e in s["errors"])
+    assert s["active"]  # the rest of the page still works
+
+
+def test_store_catalog(setup):
+    client, gh, settings = setup
+    s = client.get("/admin/api/store", headers=browser("bob")).json()
+    assert list(s["platforms"].keys()) == ["psc"]
+    psc = s["platforms"]["psc"]
+    assert psc["date"] == "2026-09-25" and psc["count"] == 2
+    by_id = {it["id"]: it for it in psc["items"]}
+    assert by_id["app/opentyrian"] == {"id": "app/opentyrian", "title": "OpenTyrian", "kind": "app",
+                                       "version": "2.1", "size": 4_200_000, "files": 1}
+    assert by_id["ps1/example"]["size"] == 100_012_345 and by_id["ps1/example"]["files"] == 2
+
+
+def test_store_catalog_empty_when_nothing_published(tmp_path):
+    from app.site import store_catalog
+    assert store_catalog(str(tmp_path)) == {"platforms": {}}
 
 
 def test_median_duration():

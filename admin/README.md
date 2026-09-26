@@ -4,6 +4,12 @@
 server's health, and the release team's buttons (a nightly, a promotion, cancel / re-run, withdraw, republish
 the page). The plan and the reasons: `autobleem-main`'s `docs/archive/admin-panel-plan.md`.
 
+The page has five tabs. **Builds** shows running and finished runs as cards with progress, job lists, steps and durations;
+the queue of waiting runs and jobs; and the self-hosted runners and their active jobs. **Releases** holds the channels,
+nightly and promotion actions, and withdraw/republish buttons. **Store** lists the site's catalogs
+(`store/<platform>/catalog.json`, read-only). **Server** shows the build server's health. **Audit** is the release
+team's action log.
+
 - `app/` - the service (FastAPI): the JSON API under `/admin/api/` and the page (`app/static/index.html`).
 - `tests/` - over a fake GitHub: `python -m pytest -q` here (`pip install -r requirements.txt pytest`).
 - `Dockerfile`; `docker/repo/compose.yml` runs it (profile `admin`) with oauth2-proxy next to the site, and
@@ -44,7 +50,7 @@ curl -H "Authorization: Bearer $(gh auth token)" -H "Content-Type: application/j
      -d '{"platforms":["psc"],"dry_run":true}' https://autobleem.retromenele.pl/admin/api/nightly
 ```
 
-`GET` `me`, `status`, `channels`, `health`, `audit`, `promote/preview?kind=alpha&version=` ; `POST` `nightly`,
+`GET` `me`, `status`, `channels`, `health`, `audit`, `store`, `promote/preview?kind=alpha&version=` ; `POST` `nightly`,
 `promote`, `runs/<repo>/<id>/cancel`, `runs/<repo>/<id>/rerun`, `withdraw`, `page`. A browser's `POST` also
 needs the header `X-AB-Request: 1` (the page sends it; a cross-site form cannot).
 

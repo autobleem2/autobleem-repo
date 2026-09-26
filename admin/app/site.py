@@ -41,6 +41,32 @@ def channels(repo_dir):
             "nightly": channel_summary(nightly), "pc_images": images}
 
 
+STORE_PLATFORMS = ("psc", "rpi", "rpi64", "pcusb", "win")
+
+
+def store_catalog(repo_dir):
+    """what the Store serves right now, read straight off `store/<platform>/catalog.json`
+    (`tools/repo_index.py`'s `index_store()` writes it) - one entry per platform that has a catalog"""
+    platforms = {}
+    for name in STORE_PLATFORMS:
+        catalog = _read(os.path.join(repo_dir, "store", name, "catalog.json"))
+        if not catalog:
+            continue
+        items = []
+        for it in catalog.get("items", []):
+            files = it.get("files") or []
+            items.append({
+                "id": it.get("id"),
+                "title": it.get("title"),
+                "kind": it.get("kind"),
+                "version": it.get("version"),
+                "size": sum(f.get("size") or 0 for f in files),
+                "files": len(files),
+            })
+        platforms[name] = {"date": catalog.get("date"), "count": len(items), "items": items}
+    return {"platforms": platforms}
+
+
 def disk(path):
     try:
         u = shutil.disk_usage(path)
