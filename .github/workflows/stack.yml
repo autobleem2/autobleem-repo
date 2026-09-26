@@ -1,0 +1,78 @@
+# The build server's site stack (docker/repo/compose.yml: Caddy, the admin panel, its GitHub login): a push to
+# develop that touches admin/ or docker/repo/ is checked, then the server's site checkout
+# (/home/claude/autobleem-site) is fast-forwarded and only what changed is redeployed -
+#   admin/                  -> the admin container rebuilt
+#   docker/repo/Caddyfile   -> Caddy recreated (the file is a single-file bind mount: a checkout replaces it with a
+#                              new file, which a running container would never see - so a reload is not enough)
+#   docker/repo/compose.yml -> `compose up -d` over the whole profile (compose recreates what its definition changed)
+# "Run workflow" redeploys all three. The download page itself is page.yml's; the served files are the
+# publishes'. Self-hosted: it is that machine's Docker. Gated by AB_CI_ENABLED.
+name: stack
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - "admin/**"
+      - "docker/repo/**"
+      - ".github/workflows/stack.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: site-stack
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: vars.AB_CI_ENABLED == 'true'
+    runs-on: [self-hosted, linux, x64]
+    env:
+      SITE_DIR: /home/claude/autobleem-site
+    steps:
+      - uses: actions/checkout@v7
+      - name: The panel's tests
+        run: |
+          docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "$PWD/admin:/admin:ro" -w /admin python:3.12-slim \
+            sh -c "pip install -q -r requirements.txt pytest && python -m pytest -q -p no:cacheprovider"
+      - name: The Caddyfile is valid
+        run: |
+          docker run --rm -e REPO_HOST=autobleem.retromenele.pl -v "$PWD/docker/repo/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - name: The site checkout
+        id: checkout
+        run: |
+          set -euo pipefail
+          before=$(git -C "$SITE_DIR" rev-parse HEAD)
+          git -C "$SITE_DIR" fetch -q origin develop
+          git -C "$SITE_DIR" merge --ff-only origin/develop
+          changed=$(git -C "$SITE_DIR" diff --name-only "$before" HEAD)
+          all=${{ github.event_name == 'workflow_dispatch' }}
+          has() { [ "$all" = true ] || printf '%s\n' "$changed" | grep -q "$1"; }
+          { has '^admin/' && echo admin=true || echo admin=false
+            has '^docker/repo/Caddyfile$' && echo caddy=true || echo caddy=false
+            has '^docker/repo/compose.yml$' && echo compose=true || echo compose=false; } >> "$GITHUB_OUTPUT"
+          git -C "$SITE_DIR" log --oneline -1
+      - name: The stack
+        working-directory: /home/claude/autobleem-site/docker/repo
+        env:
+          ADMIN: ${{ steps.checkout.outputs.admin }}
+          CADDY: ${{ steps.checkout.outputs.caddy }}
+          COMPOSE: ${{ steps.checkout.outputs.compose }}
+        run: |
+          set -euo pipefail
+          [ "$COMPOSE" = true ] && docker compose --profile admin up -d --build
+          [ "$ADMIN" = true ] && docker compose --profile admin up -d --build --no-deps admin
+          [ "$CADDY" = true ] && docker compose --profile admin up -d --no-deps --force-recreate caddy
+          true
+      - name: Everything came up
+        run: |
+          sleep 5
+          bad=0
+          for c in autobleem-repo autobleem-admin autobleem-login; do
+            state=$(docker inspect -f '{{.State.Status}}' "$c" 2>/dev/null || echo missing)
+            echo "$c: $state"
+            [ "$state" = running ] || { docker logs --tail 30 "$c" 2>&1 || true; bad=1; }
+          done
+          curl -fsS -o /dev/null -w "the site: %{http_code}\n" --resolve autobleem.retromenele.pl:443:127.0.0.1 \
+            https://autobleem.retromenele.pl/ || bad=1
+          exit $bad
