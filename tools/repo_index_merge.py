@@ -50,8 +50,9 @@ def git(args, cwd, timeout=None):
     a prompt - a fetch that would ask for credentials fails instead"""
     env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_ASKPASS="", SSH_ASKPASS="")
     try:
-        r = subprocess.run(["git"] + args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, env=env, timeout=timeout)
-    except (OSError, subprocess.TimeoutExpired):
+        r = subprocess.run(["git"] + args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            encoding="utf-8", errors="strict", env=env, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired, UnicodeDecodeError):
         return None
     return r.stdout if r.returncode == 0 else None
 
@@ -155,11 +156,18 @@ def main():
         write(pm, neutral(mine))
         write(pb, neutral(base))
         write(pt, neutral(theirs))
-        r = subprocess.run(["git", "merge-file", "-p", "-L", "this checkout", "-L", "develop (base)",
-                            "-L", "the repository", pm, pb, pt], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        try:
+            r = subprocess.run(["git", "merge-file", "-p", "-L", "this checkout", "-L", "develop (base)",
+                                "-L", "the repository", pm, pb, pt], stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, encoding="utf-8", errors="strict")
+        except UnicodeDecodeError as ex:
+            print("repo_index.py: git merge-file produced output this Python could not decode as UTF-8 "
+                  "(%s) - nothing published" % ex, file=sys.stderr)
+            return 1
         merged = r.stdout
-    if r.returncode < 0 or (r.returncode > 0 and "<<<<<<<" not in merged):
-        print("repo_index.py: git merge-file failed: " + r.stderr.strip(), file=sys.stderr)
+    if merged is None or r.returncode < 0 or (r.returncode > 0 and "<<<<<<<" not in merged):
+        stderr = (r.stderr or "").strip()
+        print("repo_index.py: git merge-file failed" + (": " + stderr if stderr else ""), file=sys.stderr)
         return 1
 
     v = max(index_version(mine), index_version(theirs))
