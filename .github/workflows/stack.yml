@@ -28,6 +28,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     env:
       SITE_DIR: /home/claude/autobleem-site
+      SITE_UID: "1004" # claude, the checkout's owner
     steps:
       - uses: actions/checkout@v7
       - name: The panel's tests
@@ -42,28 +43,32 @@ jobs:
         id: checkout
         run: |
           set -euo pipefail
-          before=$(git -C "$SITE_DIR" rev-parse HEAD)
-          git -C "$SITE_DIR" fetch -q origin develop
-          git -C "$SITE_DIR" merge --ff-only origin/develop
-          changed=$(git -C "$SITE_DIR" diff --name-only "$before" HEAD)
+          # the runner is a container: the host's checkout is reached through Docker, as its owner
+          git_site() { docker run --rm --user "$SITE_UID:$SITE_UID" -e HOME=/tmp -v "$SITE_DIR:$SITE_DIR" \
+            -w "$SITE_DIR" --entrypoint git alpine/git "$@"; }
+          before=$(git_site rev-parse HEAD)
+          git_site fetch -q origin develop
+          git_site merge -q --ff-only origin/develop
+          changed=$(git_site diff --name-only "$before" HEAD)
           all=${{ github.event_name == 'workflow_dispatch' }}
           has() { [ "$all" = true ] || printf '%s\n' "$changed" | grep -q "$1"; }
           { has '^admin/' && echo admin=true || echo admin=false
             has '^docker/repo/Caddyfile$' && echo caddy=true || echo caddy=false
             has '^docker/repo/compose.yml$' && echo compose=true || echo compose=false; } >> "$GITHUB_OUTPUT"
-          git -C "$SITE_DIR" log --oneline -1
+          git_site log --oneline -1
       - name: The stack
-        working-directory: /home/claude/autobleem-site/docker/repo
         env:
           ADMIN: ${{ steps.checkout.outputs.admin }}
           CADDY: ${{ steps.checkout.outputs.caddy }}
           COMPOSE: ${{ steps.checkout.outputs.compose }}
         run: |
           set -euo pipefail
-          [ "$COMPOSE" = true ] && docker compose --profile admin up -d --build
-          [ "$ADMIN" = true ] && docker compose --profile admin up -d --build --no-deps admin
-          [ "$CADDY" = true ] && docker compose --profile admin up -d --no-deps --force-recreate caddy
-          true
+          # compose from the host's checkout, at the same path, so its relative paths mean the host's files
+          compose() { docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$SITE_DIR:$SITE_DIR" \
+            -w "$SITE_DIR/docker/repo" docker:cli docker compose --profile admin "$@"; }
+          if [ "$COMPOSE" = true ]; then compose up -d --build; fi
+          if [ "$ADMIN" = true ]; then compose up -d --build --no-deps admin; fi
+          if [ "$CADDY" = true ]; then compose up -d --no-deps --force-recreate caddy; fi
       - name: Everything came up
         run: |
           sleep 5
@@ -73,6 +78,6 @@ jobs:
             echo "$c: $state"
             [ "$state" = running ] || { docker logs --tail 30 "$c" 2>&1 || true; bad=1; }
           done
-          curl -fsS -o /dev/null -w "the site: %{http_code}\n" --resolve autobleem.retromenele.pl:443:127.0.0.1 \
-            https://autobleem.retromenele.pl/ || bad=1
+          docker run --rm --network host curlimages/curl -fsS -o /dev/null -w "the site: %{http_code}\n" \
+            --resolve autobleem.retromenele.pl:443:127.0.0.1 https://autobleem.retromenele.pl/ || bad=1
           exit $bad
