@@ -46,6 +46,22 @@
 #                                                                                 data - kept as they are, never indexed)
 #   tools/repo_publish.sh assets                                               -> assets/ (tools/repo_assets.py)
 #   tools/repo_publish.sh index                                                just regenerate the index
+#   tools/repo_publish.sh withdraw <kind> <version> [--dry-run] [--local]      removes a published version's
+#                                                                                 folder (release/nightly/image/
+#                                                                                 retroarch/cores/pc-image/
+#                                                                                 pc-retroarch/pc-cores/
+#                                                                                 psc-retroarch/win-retroarch/
+#                                                                                 pcsx/pcsx-ab, or
+#                                                                                 "extension <name> <version>")
+#                                                                                 and re-indexes: the newest
+#                                                                                 *remaining* version is then
+#                                                                                 what latest.json/release.json/
+#                                                                                 unstable.json/os_list*.json
+#                                                                                 list, not necessarily the one
+#                                                                                 withdrawn. --dry-run prints
+#                                                                                 the exact folder and the files
+#                                                                                 in it and touches nothing (its
+#                                                                                 ssh calls are read-only listings).
 #   tools/repo_publish.sh --partial nightly <version> FILES...                 part of a development build that is still
 #                                                                                 being published (each image as it is
 #                                                                                 built, then the packages): the files go
@@ -78,7 +94,96 @@ LOCAL=0
 PARTIAL=0
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-usage() { sed -n '2,60p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,87p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+
+withdraw_usage() {
+    cat <<'EOF' >&2
+Usage: tools/repo_publish.sh withdraw <kind> <version> [--dry-run] [--local]
+       tools/repo_publish.sh withdraw extension <name> <version> [--dry-run] [--local]
+
+Removes a published version's folder and re-indexes, so the newest remaining version is
+what latest.json / release.json / unstable.json / os_list*.json list next - not
+necessarily the version just withdrawn (repo_index.py's index_* functions read the tree
+with os.listdir(), so once the folder is gone the next-newest wins on its own).
+
+<kind> is one of: release, nightly, image, retroarch, cores, pc-image, pc-retroarch,
+pc-cores, psc-retroarch, win-retroarch, pcsx, pcsx-ab, extension.
+
+--dry-run prints the exact folder and its files, and the re-index command that would run,
+then exits without touching anything - its ssh call is a read-only listing only.
+--local acts on $REPO_DIR on this machine instead of over ssh to $REPO_HOST (what a CI
+job does with $REPO_DIR bind-mounted; --dry-run still only lists, never removes).
+EOF
+    exit "${1:-0}"
+}
+
+do_withdraw() {
+    shift # "withdraw"
+    [ $# -ge 1 ] || withdraw_usage 1
+    local wkind="$1"; shift
+    local dry=0 wlocal=0 pos1="" pos2=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --dry-run) dry=1; shift ;;
+            --local) wlocal=1; shift ;;
+            -h|--help) withdraw_usage 0 ;;
+            *) if [ -z "$pos1" ]; then pos1="$1"; else pos2="$1"; fi; shift ;;
+        esac
+    done
+    local wdest=""
+    case "$wkind" in
+        release)       [ -n "$pos1" ] || withdraw_usage 1; wdest="releases/$pos1" ;;
+        nightly)       [ -n "$pos1" ] || withdraw_usage 1; wdest="nightly/$pos1" ;;
+        image)         [ -n "$pos1" ] || withdraw_usage 1; wdest="rpi-imager/images/$pos1" ;;
+        retroarch)     [ -n "$pos1" ] || withdraw_usage 1; wdest="rpi/retroarch/$pos1" ;;
+        cores)         [ -n "$pos1" ] || withdraw_usage 1; wdest="rpi/cores/$pos1" ;;
+        pc-image)      [ -n "$pos1" ] || withdraw_usage 1; wdest="pc/images/$pos1" ;;
+        pc-retroarch)  [ -n "$pos1" ] || withdraw_usage 1; wdest="pc/retroarch/$pos1" ;;
+        pc-cores)      [ -n "$pos1" ] || withdraw_usage 1; wdest="pc/cores/$pos1" ;;
+        psc-retroarch) [ -n "$pos1" ] || withdraw_usage 1; wdest="psc/retroarch/$pos1" ;;
+        win-retroarch) [ -n "$pos1" ] || withdraw_usage 1; wdest="win/retroarch/$pos1" ;;
+        pcsx)          [ -n "$pos1" ] || withdraw_usage 1; wdest="emu/pcsx-abnxt/$pos1" ;;
+        pcsx-ab)       [ -n "$pos1" ] || withdraw_usage 1; wdest="emu/pcsx-ab/$pos1" ;;
+        extension)     [ -n "$pos1" ] && [ -n "$pos2" ] || withdraw_usage 1; wdest="extensions/$pos1/$pos2" ;;
+        *) echo "unknown withdraw kind: $wkind" >&2; withdraw_usage 1 ;;
+    esac
+
+    local listing index_cmd
+    index_cmd="cd '$REPO_DIR' && python3 .tools/repo_index.py . --base-url '$AB_REPO_URL'"
+    if [ "$wlocal" -eq 1 ]; then
+        if [ -d "$REPO_DIR/$wdest" ]; then
+            listing="$(find "$REPO_DIR/$wdest" -maxdepth 1 -mindepth 1 -printf '%f\n' | sort)"
+        else
+            listing=""
+        fi
+    else
+        listing="$(ssh "$REPO_HOST" "[ -d '$REPO_DIR/$wdest' ] && find '$REPO_DIR/$wdest' -maxdepth 1 -mindepth 1 -printf '%f\\n' | sort || true")"
+    fi
+    if [ -z "$listing" ]; then
+        echo "nothing to withdraw: $REPO_DIR/$wdest does not exist ($( [ "$wlocal" -eq 1 ] && echo "on this machine" || echo "on $REPO_HOST"))" >&2
+        exit 1
+    fi
+    echo "withdraw: $wdest (kind=$wkind)"
+    echo "will remove $REPO_DIR/$wdest/ and its files:"
+    echo "$listing" | sed 's/^/  /'
+    echo "will then re-run: python3 .tools/repo_index.py . --base-url $AB_REPO_URL (in $REPO_DIR$( [ "$wlocal" -eq 1 ] && echo " on this machine" || echo " on $REPO_HOST"))"
+    if [ "$dry" -eq 1 ]; then
+        echo "--dry-run: nothing removed, nothing re-indexed"
+        exit 0
+    fi
+    if [ "$wlocal" -eq 1 ]; then
+        rm -rf "$REPO_DIR/$wdest"
+        bash -c "$index_cmd"
+    else
+        ssh "$REPO_HOST" "set -e; rm -rf '$REPO_DIR/$wdest'; $index_cmd"
+    fi
+    echo "withdrawn and re-indexed: $wdest"
+}
+
+if [ "${1:-}" = withdraw ]; then
+    do_withdraw "$@"
+    exit $?
+fi
 
 while [ $# -gt 0 ]; do
     case "$1" in

@@ -705,8 +705,8 @@ def index_images(repo, base_url):
                 m = IMAGE_RE.match(os.path.basename(path))
                 if m:
                     versions.setdefault(version, {})[m.group("arch")] = file_entry(repo, base_url, path)
-    if not versions:
-        return versions
+    # no early return on an empty tree: a full withdraw (the last image set's folder removed) must still
+    # clear os_list.json/os_list-testing.json - write_imager_list(None, None) below does that itself
     # one pre-release image set at most, the newest; Imager gets the newest stable set, else that one
     pre = [v for v in versions if is_prerelease(v)]
     stable = [v for v in versions if not is_prerelease(v)]
@@ -748,8 +748,8 @@ def index_pc_images(repo, base_url):
                 m = PC_IMAGE_RE.match(os.path.basename(path))
                 if m:
                     versions.setdefault(version, {})[m.group("arch")] = file_entry(repo, base_url, path)
-    if not versions:
-        return versions
+    # no early return on an empty tree: a full withdraw (the last image set's folder removed) must still
+    # clear latest.json/release.json/testing.json - catalog(name, None) below does that itself
     pre = [v for v in versions if is_prerelease(v)]
     stable = [v for v in versions if not is_prerelease(v)]
     if len(pre) > 1:
@@ -833,13 +833,18 @@ def index_pcsx(repo, base_url, name="pcsx-abnxt"):
                         builds[version]["note"] = json.load(f).get("note", "")
                 except (OSError, ValueError):
                     pass
+    latest_path = os.path.join(root, "latest.json")
     if builds:
         newest = sorted(builds, key=pcsx_version_key)[-1]
         prune([os.path.join(root, v) for v in builds if v != newest], [], name + " build")
         builds = {newest: builds[newest]}
         latest = {"version": newest}
         latest.update(builds[newest])
-        write_json(os.path.join(root, "latest.json"), latest)
+        write_json(latest_path, latest)
+    elif os.path.isfile(latest_path):
+        # every build folder is gone (a `repo_publish.sh withdraw` of the sole build, with none republished
+        # yet) - a stale latest.json would otherwise keep offering a build whose folder no longer exists
+        os.remove(latest_path)
     return builds
 
 
