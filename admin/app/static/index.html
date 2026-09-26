@@ -466,12 +466,33 @@ async function preview() {
   } catch (e) { out.textContent = e.message; go.disabled = true; }
 }
 
-// -------------------------------------------------------------------------------- Store tab (filled in fully once
-// GET /admin/api/store exists - see REPORT.md)
-function renderStore() { /* replaced once the store API lands */ }
+// -------------------------------------------------------------------------------- Store tab
+function bytes(n) {
+  if (!n) return "0 B";
+  const u = ["B", "KB", "MB", "GB"]; let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return n.toFixed(i ? 1 : 0) + " " + u[i];
+}
+function renderStore(s) {
+  const box = document.getElementById("storePlatforms"); box.replaceChildren();
+  const names = Object.keys(s.platforms || {});
+  if (!names.length) { box.append(el("p", {class: "dim"}, "Nothing published yet.")); return; }
+  for (const name of names) {
+    const p = s.platforms[name];
+    box.append(el("section", {class: "panel"},
+      el("h2", {}, name, el("small", {}, p.count + " items · " + (p.date || "no date"))),
+      el("div", {class: "scroll"}, el("table",
+        {}, el("thead", {}, el("tr", {}, el("th", {}, "Name"), el("th", {}, "Kind"), el("th", {}, "Version"),
+                              el("th", {}, "Files"), el("th", {}, "Size"))),
+        el("tbody", {}, p.items.map(it => el("tr", {}, el("td", {}, it.title || it.id),
+          el("td", {}, it.kind || ""), el("td", {}, el("code", {}, it.version || "")),
+          el("td", {class: "num"}, it.files), el("td", {class: "num"}, bytes(it.size)))))))));
+  }
+}
 async function loadStore() {
   renderStore.loaded = true;
-  document.getElementById("storePlatforms").replaceChildren(el("p", {class: "dim"}, "Not wired up yet."));
+  try { renderStore(await api("store")); }
+  catch (e) { document.getElementById("storePlatforms").replaceChildren(el("p", {class: "bad"}, e.message)); }
 }
 
 // -------------------------------------------------------------------------------- tabs

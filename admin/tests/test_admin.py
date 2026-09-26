@@ -89,6 +89,13 @@ def setup(tmp_path):
     (repo / "releases" / "latest.json").write_text(json.dumps({"version": "v2.0.0-alpha2", "prerelease": True}))
     (repo / "nightly" / "latest.json").write_text(json.dumps(
         {"version": "v2.0.0-alpha2-25-g7a37132", "files": {"psc-fs": {}}, "images": {"armhf": {}}}))
+    (repo / "store" / "psc").mkdir(parents=True)
+    (repo / "store" / "psc" / "catalog.json").write_text(json.dumps({
+        "schema": 1, "platform": "psc", "date": "2026-09-25",
+        "items": [{"id": "app/opentyrian", "kind": "app", "title": "OpenTyrian", "version": "2.1",
+                  "files": [{"name": "opentyrian-psc-2.1.zip", "size": 4_200_000}]},
+                 {"id": "ps1/example", "kind": "ps1", "title": "Example Game", "version": "1.0",
+                  "files": [{"name": "example.zip", "size": 100_000_000}, {"name": "example.png", "size": 12345}]}]}))
     settings = Settings(repo_dir=str(repo), data_dir=str(tmp_path / "data"), repos=["autobleem"])
     gh = FakeGitHub()
     client = TestClient(main.create_app(settings, gh=gh, start_notifier=False))
@@ -196,6 +203,23 @@ def test_status_runners(setup):
     assert s["runners"] == []
     assert any(e["repo"] == "(runners)" for e in s["errors"])
     assert s["active"]  # the rest of the page still works
+
+
+def test_store_catalog(setup):
+    client, gh, settings = setup
+    s = client.get("/admin/api/store", headers=browser("bob")).json()
+    assert list(s["platforms"].keys()) == ["psc"]
+    psc = s["platforms"]["psc"]
+    assert psc["date"] == "2026-09-25" and psc["count"] == 2
+    by_id = {it["id"]: it for it in psc["items"]}
+    assert by_id["app/opentyrian"] == {"id": "app/opentyrian", "title": "OpenTyrian", "kind": "app",
+                                       "version": "2.1", "size": 4_200_000, "files": 1}
+    assert by_id["ps1/example"]["size"] == 100_012_345 and by_id["ps1/example"]["files"] == 2
+
+
+def test_store_catalog_empty_when_nothing_published(tmp_path):
+    from app.site import store_catalog
+    assert store_catalog(str(tmp_path)) == {"platforms": {}}
 
 
 def test_median_duration():

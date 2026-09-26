@@ -18,7 +18,7 @@ from .config import settings as default_settings
 from .github import GitHub, GitHubError
 from .notify import Notifier
 from .runs import Runs
-from .site import Health, channels
+from .site import Health, channels, store_catalog
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 
@@ -99,6 +99,10 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
     @app.get("/admin/api/health")
     def get_health(who=Depends(viewer)):
         return health.report()
+
+    @app.get("/admin/api/store")
+    def get_store(who=Depends(viewer)):
+        return store_catalog(settings.repo_dir)
 
     @app.get("/admin/api/audit")
     def get_audit(who=Depends(viewer)):
