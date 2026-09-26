@@ -43,8 +43,10 @@ def summarise(repo, run, typical, now):
         "event": run.get("event"),
         "status": run["status"],
         "conclusion": run.get("conclusion"),
+        "created": run.get("created_at"),
         "started": run.get("run_started_at"),
         "updated": run.get("updated_at"),
+        "completed": run.get("updated_at") if run["status"] == "completed" else None,
         "elapsed": elapsed,
         "typical": typical,
         "left": left,
@@ -73,13 +75,28 @@ class Runs:
         jobs = self.gh.cached("jobs:%s:%s" % (repo, run_id), self.settings.runs_ttl,
                               lambda: self.gh.call("GET", path).get("jobs", []))
         return [{"name": j["name"], "status": j["status"], "conclusion": j.get("conclusion"),
-                 "started": j.get("started_at"), "runner": j.get("runner_name"), "url": j.get("html_url")}
+                 "started": j.get("started_at"), "completed": j.get("completed_at"),
+                 "runner": j.get("runner_name"), "labels": j.get("labels") or [], "url": j.get("html_url"),
+                 "steps": [{"number": st.get("number"), "name": st.get("name"), "status": st.get("status"),
+                            "conclusion": st.get("conclusion"), "started": st.get("started_at"),
+                            "completed": st.get("completed_at")} for st in (j.get("steps") or [])]}
                 for j in jobs]
 
+    def runners(self):
+        """the org's self-hosted runners - a 403/404 (the App not installed with that permission yet, or none
+        registered) must not break status; the caller matches `busy` runners to an active job by name"""
+        def ask():
+            data = self.gh.call("GET", "/orgs/%s/actions/runners?per_page=50" % self.settings.org)
+            return [{"name": r["name"], "status": r["status"], "busy": r["busy"],
+                     "labels": [l["name"] for l in r.get("labels", [])]} for r in data.get("runners", [])]
+        return self.gh.cached("status-runners", self.settings.runs_ttl, ask)
+
     def status(self, now=None, recent=20):
-        """{"active": [...], "recent": [...]} - active with their jobs, recent the newest finished first"""
+        """{"active": [...], "recent": [...], "queue": [...], "runners": [...]} - active with their jobs and a
+        steps/jobs progress count, recent the newest finished first, queue everything still waiting (oldest
+        first), runners the build server's self-hosted runners with the active job each is on"""
         now = now or datetime.now(timezone.utc)
-        active, finished, errors = [], [], []
+        active, finished, queue, errors = [], [], [], []
         for repo in self.settings.repos:
             try:
                 runs = self.repo_runs(repo)
@@ -87,13 +104,51 @@ class Runs:
                 errors.append({"repo": repo, "error": str(e)})
                 continue
             for run in runs:
-                if run["status"] in ACTIVE:
+                if run["status"] == "in_progress":
                     item = summarise(repo, run, self.typical(repo, run["workflow_id"]), now)
-                    item["jobs"] = self.jobs(repo, run["id"])
+                    jobs = self.jobs(repo, run["id"])
+                    item["jobs"] = jobs
+                    item["progress"] = job_progress(jobs)
                     active.append(item)
+                    for j in jobs:
+                        if j["status"] == "queued":
+                            queue.append(queue_entry(repo, run, now, job=j))
+                elif run["status"] in ACTIVE:  # queued/waiting/pending/requested: not running yet at all
+                    queue.append(queue_entry(repo, run, now))
                 else:
                     finished.append(summarise(repo, run, None, now))
         active.sort(key=lambda r: r["started"] or "", reverse=True)
         finished.sort(key=lambda r: r["updated"] or "", reverse=True)
-        return {"active": active, "recent": finished[:recent], "errors": errors,
-                "at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
+        queue.sort(key=lambda q: q["since"] or "")
+        try:
+            runners = self.runners()
+        except Exception as e:
+            runners = []
+            errors.append({"repo": "(runners)", "error": str(e)})
+        by_runner = {j["runner"]: (a, j) for a in active for j in a["jobs"] if j.get("runner")}
+        for r in runners:
+            run_job = by_runner.get(r["name"])
+            r["job"] = {"repo": run_job[0]["repo"], "run_id": run_job[0]["id"], "job": run_job[1]["name"]} \
+                if run_job else None
+        return {"active": active, "recent": finished[:recent], "queue": queue, "runners": runners,
+                "errors": errors, "at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+
+def job_progress(jobs):
+    """steps done/total across a run's jobs, for the progress bar"""
+    done = sum(1 for j in jobs for st in j["steps"] if st["status"] == "completed")
+    total = sum(len(j["steps"]) for j in jobs)
+    return {"done": done, "total": total}
+
+
+def queue_entry(repo, run, now, job=None):
+    since = job.get("started") if job else run.get("run_started_at") or run.get("created_at")
+    # a queued job has no started_at of its own until it picks up a runner; fall back to the run's own wait
+    since = since or run.get("created_at")
+    return {
+        "repo": repo, "run_id": run["id"], "workflow": run.get("name"), "branch": run.get("head_branch"),
+        "title": run.get("display_title"), "status": job["status"] if job else run["status"],
+        "job": job.get("name") if job else None, "labels": job.get("labels") if job else [],
+        "since": since, "waiting": seconds(parse_time(since), now) if since else None,
+        "url": job.get("url") if job else run.get("html_url"),
+    }
