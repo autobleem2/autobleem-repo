@@ -56,6 +56,7 @@ button{padding:.25rem .8rem;border:1px solid var(--line);border-radius:4px;backg
   cursor:pointer;white-space:nowrap}
 button.link{border:0;background:none;padding:.1rem .3rem;color:var(--cyan)}
 button.link:hover{background:none;text-decoration:underline}
+#tasksPanel{scroll-margin-top:6.5rem}
 button:hover{background:rgba(79,200,255,.22)}
 button.danger{border-color:rgba(255,107,107,.5);background:rgba(255,107,107,.1)}
 button.danger:hover{background:rgba(255,107,107,.25)}
@@ -144,7 +145,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
       <div class="scroll"><table><tbody id="teams"></tbody></table></div>
       <p class="dim" id="usage"></p>
     </section>
-    <section class="panel">
+    <section class="panel" id="tasksPanel">
       <h2>Tasks <small id="taskCount"></small></h2>
       <div class="row">
         <input type="text" id="taskQ" placeholder="search" size="18">
@@ -621,9 +622,10 @@ function renderTeams() {
     needs.append(el("li", {}, el("span", {class: "kind"}, "todo"), el("code", {}, r.id), " ", r.title));
   if (mine.length > 5) needs.append(el("li", {class: "dim"}, "and " + (mine.length - 5) + " more todo rows for you - ",
     el("button", {type: "button", class: "link", onclick: () => {
-      document.getElementById("taskQ").value = ""; document.getElementById("taskState").value = "open";
-      document.getElementById("taskMs").value = ""; renderRoadmap.ownerOnly = true; renderRoadmap();
-      document.getElementById("tasks").scrollIntoView({behavior: "smooth"}); }}, "show them")));
+      // every other filter off, or a team/section picked earlier hides the owner's rows (they have no team)
+      for (const id of ["taskQ", "taskMs", "taskTeam", "taskSec"]) document.getElementById(id).value = "";
+      document.getElementById("taskState").value = "open"; renderRoadmap.ownerOnly = true; renderRoadmap();
+      document.getElementById("tasksPanel").scrollIntoView({behavior: "smooth"}); }}, "show them")));
   if (!needs.children.length) needs.append(el("li", {class: "dim"}, "Nothing is waiting for you."));
 }
 function fillSelect(id, values, label) {
@@ -664,7 +666,10 @@ function renderTasks(d) {
     (!sec || r.section === sec) && (!state || (state === "done") === !!r.done) &&
     (!renderRoadmap.ownerOnly || (r.who || "").toLowerCase().includes("owner")) &&
     (!q || (r.id + " " + r.title + " " + (r.text || "")).toLowerCase().includes(q)));
-  document.getElementById("taskCount").textContent = rows.length + " of " + d.rows.length;
+  document.getElementById("taskCount").replaceChildren(rows.length + " of " + d.rows.length,
+    renderRoadmap.ownerOnly ? " · only yours - " : "",
+    renderRoadmap.ownerOnly ? el("button", {type: "button", class: "link",
+      onclick: () => { renderRoadmap.ownerOnly = false; renderRoadmap(); }}, "show all") : "");
   const tb = document.getElementById("tasks"); tb.replaceChildren();
   if (!rows.length) tb.append(el("tr", {}, el("td", {colspan: 5, class: "dim"}, "No task matches.")));
   for (const r of rows) {
