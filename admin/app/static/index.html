@@ -98,6 +98,16 @@ tr.more td{font-size:.86rem;color:var(--dim);white-space:normal}
 body.can-act .actonly{display:block}
 body.can-act button.actonly{display:inline-block}
 @media (max-width:40rem){td,th{padding:.4rem .35rem}header.top nav{margin-left:0}}
+/* how-to pages for what the owner does himself: a modal over the page */
+button.howto{border:1px solid var(--cyan);border-radius:999px;width:1.5rem;height:1.5rem;padding:0;margin-left:.4rem;
+  color:var(--cyan);font-weight:600;line-height:1;vertical-align:middle}
+dialog#howto{width:min(46rem,calc(100vw - 2rem));max-height:calc(100vh - 2rem);padding:0;border:1px solid var(--line);
+  border-radius:8px;background:var(--navy);color:var(--ink)}
+dialog#howto::backdrop{background:rgba(0,0,0,.6)}
+dialog#howto .head{display:flex;gap:1rem;align-items:center;justify-content:space-between;padding:.7rem 1rem;
+  border-bottom:1px solid var(--line)}
+dialog#howto h2{margin:0;font-size:1.05rem}
+dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;background:#fff;color:#15202b}
 </style>
 </head>
 <body>
@@ -266,6 +276,7 @@ body.can-act button.actonly{display:inline-block}
     </section>
   </section>
 </main>
+<dialog id="howto"><div class="head"><h2 id="howtoTitle"></h2><button type="button" onclick="document.getElementById('howto').close()">Close</button></div><div id="howtoBody"></div></dialog>
 <div id="toast" class="notice"></div>
 
 <script>
@@ -553,6 +564,33 @@ function ago(iso) {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.round(m / 60) + " h ago";
 }
+// A how-to page is our own HTML from autobleem-main/howto/. It is cleaned all the same (no scripts, frames,
+// event handlers or javascript: links) and shown in a shadow root, so its <style> (`:host` for the page itself)
+// and the panel's never meet. Links open in a new tab.
+function cleanHowto(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.querySelectorAll("script,iframe,frame,object,embed,link,meta,base,form").forEach(e => e.remove());
+  for (const e of doc.querySelectorAll("*")) {
+    for (const a of [...e.attributes])
+      if (a.name.startsWith("on") || (/^(href|src|action|xlink:href)$/.test(a.name) && /^\s*javascript:/i.test(a.value)))
+        e.removeAttribute(a.name);
+    if (e.tagName === "A") { e.setAttribute("target", "_blank"); e.setAttribute("rel", "noopener"); }
+  }
+  return [...doc.head.childNodes, ...doc.body.childNodes];
+}
+async function openHowto(n) {
+  const dlg = document.getElementById("howto"), host = document.getElementById("howtoBody");
+  const root = host.shadowRoot || host.attachShadow({mode: "open"});
+  document.getElementById("howtoTitle").textContent = n.id + " - " + n.what;
+  root.replaceChildren(el("p", {}, "Loading..."));
+  dlg.showModal();
+  try {
+    root.replaceChildren(...cleanHowto((await api("howto/" + encodeURIComponent(n.howto))).html));
+  } catch (e) {
+    root.replaceChildren(el("p", {}, "The page could not be loaded."));
+    toast(e.message, true);
+  }
+}
 function renderTeams() {
   const t = teamsData || {}, st = t.status, tb = document.getElementById("teams"), needs = document.getElementById("needs");
   tb.replaceChildren(); needs.replaceChildren();
@@ -570,7 +608,9 @@ function renderTeams() {
         (u.five_hour_resets_at ? " (resets " + new Date(u.five_hour_resets_at).toLocaleTimeString() + ")" : "") +
         " · weekly " + u.weekly_percent + "%" + (u.weekly_cap_today_percent ? " of today's " + u.weekly_cap_today_percent + "%" : "") : "";
     for (const n of st.needs_owner)
-      needs.append(el("li", {}, el("span", {class: "kind"}, n.kind), el("code", {}, n.id), " ", n.what));
+      needs.append(el("li", {}, el("span", {class: "kind"}, n.kind), el("code", {}, n.id), " ", n.what,
+        n.howto ? el("button", {type: "button", class: "howto", title: "How to do it", "aria-label": "How to do it",
+                                onclick: () => openHowto(n)}, "i") : null));
   } else {
     tb.append(el("tr", {}, el("td", {class: "dim"}, "No status yet" + (t.reason ? " (" + t.reason + ")" : "") + ".")));
   }

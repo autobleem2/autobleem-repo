@@ -53,7 +53,7 @@ def test_status_is_passed_on_cleaned():
                                "items": [{"id": "R27", "what": "the roadmap tab"}], "note": ""}
     assert got["teams"][1]["state"] == "unknown"
     assert len(got["teams"]) == 2
-    assert got["needs_owner"] == [{"id": "C11-B", "kind": "device test", "what": "pad swap"}]
+    assert got["needs_owner"] == [{"id": "C11-B", "kind": "device test", "what": "pad swap", "howto": ""}]
 
 
 def test_no_status_yet():
@@ -63,3 +63,22 @@ def test_no_status_yet():
 def test_bad_json_and_unknown_schema():
     assert source({"status.json": "{"}).teams()["status"] is None
     assert source({"status.json": json.dumps({"schema": 2})}).teams()["reason"] == "status.json has an unknown schema"
+
+
+def test_a_howto_page_is_named_and_served():
+    status = dict(STATUS, needs_owner=[
+        {"id": "R26 login", "kind": "action", "what": "log in", "howto": "howto/claude-login.html"},
+        {"id": "X", "kind": "action", "what": "x", "howto": "../secrets.html"},
+        {"id": "Y", "kind": "action", "what": "y", "howto": "howto/Bad Name.html"}])
+    s = source({"status.json": json.dumps(status), "howto/claude-login.html": "<h1>Logowanie</h1>"})
+    assert [n["howto"] for n in s.teams()["status"]["needs_owner"]] == ["claude-login", "", ""]
+    assert s.howto("claude-login") == "<h1>Logowanie</h1>"
+    assert s.gh.paths[-1] == "/repos/autobleem2/autobleem-main/contents/howto/claude-login.html?ref=develop"
+
+
+def test_a_howto_name_never_leaves_the_folder():
+    s = source({"howto/x.html": "x"})
+    assert s.howto("missing") is None
+    for bad in ("../status", "a/b", "X", "", "a.html"):
+        assert s.howto(bad) is None
+    assert all("/contents/howto/" in p for p in s.gh.paths)
