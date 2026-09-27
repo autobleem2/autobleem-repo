@@ -26,8 +26,10 @@ Reads what is there (CLAUDE.md, "The download repository", has the layout) and w
     win/bios/                          biospack-win64.txt, the Windows list (tools/biospack.py --arch win64)
     rpi/cores/latest.json              the newest cores tarball per architecture (rpi/cores/<arch>/)
     samples/latest.json                the newest sample-games pack (samples/samples-<date>.tar.gz, tools/build_samples.py)
-    emu/pcsx-ab/latest.json            the newest build of each emulator, one package per platform (emu/<name>/<version>/,
-    emu/pcsx-abnxt/latest.json         each repository's tools/make_packages.sh) - the classic pcsx-ab and the next one
+    emu/pcsx-ab/latest.json            the newest build per channel of each emulator (release/testing from a v* tag
+    emu/pcsx-abnxt/latest.json         in emu/<name>/<version>/, nightly from a develop push in emu/<name>/nightly/
+                                       <version>/), one package per platform - each repository's tools/make_packages.sh,
+                                       the classic pcsx-ab and the next one
     rpi-imager/os_list.json            the newest images' Imager metadata with real urls (from the
                                        rpi_imager_repo.json make_rpi_image.sh wrote next to them)
     index.html                         the landing page
@@ -834,44 +836,98 @@ def pcsx_version_key(version):
     return (0, 0, "", 0, PUBLISHED_AT.get(version, 0), version)
 
 
+def pcsx_channel_of(version):
+    """release/testing for a v* tag build (plain vs pre-release), nightly for anything else - the
+    date-and-commit or git-describe versions a develop push has always carried (pcsx-ab has no tags on
+    develop at all; pcsx-abnxt's r26-N-g... describes the same way) - whether they sit in the channel's own
+    emu/<name>/nightly/<version>/ (the workflow's develop-push publish) or, from before that publish existed,
+    directly under emu/<name>/<version>/ (a manual `repo_publish.sh pcsx <dated-version> ...` run)."""
+    if version.startswith("v"):
+        return "testing" if is_prerelease(version) else "release"
+    return "nightly"
+
+
+def _read_pcsx_builds(repo, base_url, name, folder_root):
+    """The valid <name>-<version>-<platform> builds directly under `folder_root` (a dict version -> build)."""
+    builds = {}
+    if not os.path.isdir(folder_root):
+        return builds
+    for version in os.listdir(folder_root):
+        folder = os.path.join(folder_root, version)
+        if not os.path.isdir(folder):
+            continue
+        files = {}
+        for path in data_files(folder):
+            m = PCSX_RE.match(os.path.basename(path))
+            if m and m.group("name") == name and m.group("version") == version:
+                files[m.group("plat")] = file_entry(repo, base_url, path)
+                stamp = path + ".sha256"
+                PUBLISHED_AT[version] = max(PUBLISHED_AT.get(version, 0),
+                                            os.path.getmtime(stamp if os.path.isfile(stamp) else path))
+        if not files:
+            continue
+        build = {"version": version, "files": files}
+        manifest = os.path.join(folder, "%s-%s.json" % (name, version))
+        if os.path.isfile(manifest):
+            build["manifest"] = base_url + "/" + os.path.relpath(manifest, repo).replace(os.sep, "/")
+            try:
+                with open(manifest, encoding="utf-8") as f:
+                    build["note"] = json.load(f).get("note", "")
+            except (OSError, ValueError):
+                pass
+        builds[version] = build
+    return builds
+
+
 def index_pcsx(repo, base_url, name="pcsx-abnxt"):
-    """emu/<name>/<version>/<name>-<version>-<platform>.tar.gz|zip (+ <name>-<version>.json), name = pcsx-ab or
-    pcsx-abnxt - the newest version kept, the rest deleted, latest.json = the newest."""
+    """emu/<name>/<version>/<name>-<version>-<platform>.tar.gz|zip (+ <name>-<version>.json) for a v* tag build
+    (release/testing, told apart by pcsx_channel_of), and emu/<name>/nightly/<version>/ the same way for a
+    develop-push build - name = pcsx-ab or pcsx-abnxt. The newest build per channel (nightly/testing/release)
+    is kept, an older one of the same channel pruned (an older nightly the way the site prunes elsewhere -
+    only the newest survives); emu/<name>/latest.json mirrors what is kept, keyed by channel. Returns
+    {"release": build, "testing": build, "nightly": build} (a channel missing when there is no build for it),
+    a build being {"version", "files": {plat: entry}, optionally "manifest"/"note"}."""
     root = os.path.join(repo, "emu", name)
-    builds = {}  # version -> {"files": {plat: entry}, "manifest": url}
-    if os.path.isdir(root):
-        for version in os.listdir(root):
-            folder = os.path.join(root, version)
-            if not os.path.isdir(folder):
-                continue
-            for path in data_files(folder):
-                m = PCSX_RE.match(os.path.basename(path))
-                if m and m.group("name") == name and m.group("version") == version:
-                    builds.setdefault(version, {"files": {}})["files"][m.group("plat")] = file_entry(repo, base_url, path)
-                    stamp = path + ".sha256"
-                    PUBLISHED_AT[version] = max(PUBLISHED_AT.get(version, 0),
-                                                os.path.getmtime(stamp if os.path.isfile(stamp) else path))
-            manifest = os.path.join(folder, "%s-%s.json" % (name, version))
-            if version in builds and os.path.isfile(manifest):
-                builds[version]["manifest"] = base_url + "/emu/%s/%s/%s-%s.json" % (name, version, name, version)
-                try:
-                    with open(manifest, encoding="utf-8") as f:
-                        builds[version]["note"] = json.load(f).get("note", "")
-                except (OSError, ValueError):
-                    pass
+    nightly_root = os.path.join(root, "nightly")
+
+    tag_builds = _read_pcsx_builds(repo, base_url, name, root)
+    tag_builds.pop("nightly", None)  # the nightly subdirectory itself is never a version folder
+    nightly_builds = _read_pcsx_builds(repo, base_url, name, nightly_root)
+
+    channels = {}
+    keep_tag_versions = set()
+    for channel in ("release", "testing"):
+        versions = [v for v in tag_builds if pcsx_channel_of(v) == channel]
+        if versions:
+            newest = sorted(versions, key=pcsx_version_key)[-1]
+            channels[channel] = tag_builds[newest]
+            keep_tag_versions.add(newest)
+
+    # nightly: the real nightly/ builds plus any legacy dated build still sitting directly under emu/<name>/
+    # (pcsx_channel_of also calls those "nightly") - one shared pool, the newest of either wins
+    legacy_nightly = {v: b for v, b in tag_builds.items() if pcsx_channel_of(v) == "nightly"}
+    nightly_pool = dict(nightly_builds)
+    nightly_pool.update(legacy_nightly)
+    keep_nightly_version = None
+    if nightly_pool:
+        keep_nightly_version = sorted(nightly_pool, key=pcsx_version_key)[-1]
+        channels["nightly"] = nightly_pool[keep_nightly_version]
+        if keep_nightly_version in legacy_nightly:
+            keep_tag_versions.add(keep_nightly_version)
+
+    prune([os.path.join(root, v) for v in tag_builds if v not in keep_tag_versions], [], name + " build")
+    keep_nightly_in_dir = keep_nightly_version if keep_nightly_version in nightly_builds else None
+    prune([os.path.join(nightly_root, v) for v in nightly_builds if v != keep_nightly_in_dir],
+          [], name + " nightly build")
+
     latest_path = os.path.join(root, "latest.json")
-    if builds:
-        newest = sorted(builds, key=pcsx_version_key)[-1]
-        prune([os.path.join(root, v) for v in builds if v != newest], [], name + " build")
-        builds = {newest: builds[newest]}
-        latest = {"version": newest}
-        latest.update(builds[newest])
-        write_json(latest_path, latest)
+    if channels:
+        write_json(latest_path, channels)
     elif os.path.isfile(latest_path):
         # every build folder is gone (a `repo_publish.sh withdraw` of the sole build, with none republished
         # yet) - a stale latest.json would otherwise keep offering a build whose folder no longer exists
         os.remove(latest_path)
-    return builds
+    return channels
 
 
 #*******************************
@@ -1516,15 +1572,18 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
         out.append(table([row(lang, f) for lang, f in manuals]) + "</div>")
     emu_rows = []
     for name, heading, blurb in EMULATORS:
-        builds_of = (pcsx or {}).get(name)
-        if not builds_of:
-            continue
-        version = sorted(builds_of, key=pcsx_version_key)[-1]
-        b = builds_of[version]
-        cls = "pre" if is_prerelease(version) else ("rel" if version.startswith("v") else "")
-        for plat, title in PCSX_PLATFORMS:
-            if plat in b["files"]:
-                emu_rows.append(row("%s, %s" % (name, title), b["files"][plat], version, cls))
+        channels_of = (pcsx or {}).get(name) or {}
+        # same three channels and pills as everywhere else on the page: release, the one pre-release
+        # (here "testing" - a pre-release tag), the newest development build ("dev " + version, as the
+        # top-level nightly channel is shown)
+        for channel, cls, prefix in (("release", "rel", ""), ("testing", "pre", ""), ("nightly", "dev", "dev ")):
+            b = channels_of.get(channel)
+            if not b:
+                continue
+            text = prefix + b["version"]
+            for plat, title in PCSX_PLATFORMS:
+                if plat in b["files"]:
+                    emu_rows.append(row("%s, %s" % (name, title), b["files"][plat], text, cls))
     if emu_rows:
         out.append("<div class=\"panel\"><h2>PS1 emulators</h2><p>pcsx-abnxt (the default) and the classic pcsx-ab, "
                    "the packages every platform's installer carries; each unpacks to <code>pcsx-ab</code> + "

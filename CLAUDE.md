@@ -47,6 +47,18 @@ set by the launcher's `docs/store-plan.md`.
   the Linux setup guide folded under Build inputs; LAN Share (pc-tools' Windows app, `extensions/lanshare/`,
   `lanshare-windows-x86_64-<v>.zip`) is listed there too. Tested in `tests/test_extension_index.py`.
 
+## The PS1 emulators' channels (2026-09-27, RELEASE-4)
+
+`emu/<name>/` (`pcsx-ab`, `pcsx-abnxt`) has three channels now, like every other tab: a v* tag build under
+`emu/<name>/<version>/` is **release** (a plain tag) or **testing** (a pre-release tag - `is_prerelease`), a
+develop push is **nightly**, published to `emu/<name>/nightly/<version>/`. `index_pcsx` (`pcsx_channel_of`
+tells a version's channel apart) keeps the newest build of each channel and prunes an older one of the same
+channel - an older nightly goes the way an older extension development build does; `emu/<name>/latest.json`
+mirrors what is kept, keyed by channel. `repo_publish.sh pcsx`/`pcsx-ab` still publish a v* tag build; the new
+`pcsx-nightly`/`pcsx-ab-nightly` kinds publish a develop push (and `withdraw` has the matching kinds). The PS1
+emulators tab on the download page draws the same three pills (`rel`/`pre`/`dev`) as every other tab. Tested
+in `tests/test_pcsx_index.py`.
+
 ## The pages' look and structure - the rules (the owner's, 2026-09-23)
 
 The owner approved the 2026-09-23 redesign ("look and feel of the page is great"). **Keep it; change it only

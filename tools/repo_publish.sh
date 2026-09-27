@@ -35,9 +35,16 @@
 #                                                                                 fetches RetroBIOS's files by; the list only)
 #   tools/repo_publish.sh samples build_samples/samples-20260920.tar.gz build_samples/samples-20260920.json
 #                                                                              -> samples/ (newest date kept)
-#   tools/repo_publish.sh pcsx r26-20-gb9801962 ../pcsx-abnxt/dist/packages/*   -> emu/pcsx-abnxt/<version>/ (the pcsx-abnxt
-#                                                                                 repository's tools/make_packages.sh; newest kept)
-#   tools/repo_publish.sh pcsx-ab 20260920-fc8c992 ../pcsx-ab2/dist/packages/*  -> emu/pcsx-ab/<version>/ (the same, the classic emulator)
+#   tools/repo_publish.sh pcsx v2.0.0 ../pcsx-abnxt/dist/packages/*             -> emu/pcsx-abnxt/<version>/ (a v* tag build:
+#                                                                                 release, or testing for a pre-release tag -
+#                                                                                 repo_index.py's index_pcsx tells them apart
+#                                                                                 by the version string; newest per channel kept)
+#   tools/repo_publish.sh pcsx-ab v2.0.0 ../pcsx-ab2/dist/packages/*            -> emu/pcsx-ab/<version>/ (the same, the classic emulator)
+#   tools/repo_publish.sh pcsx-nightly r26-20-gb9801962 ../pcsx-abnxt/dist/packages/*
+#                                                                              -> emu/pcsx-abnxt/nightly/<version>/ (a develop-push
+#                                                                                 build - the nightly channel; newest kept, an older one pruned)
+#   tools/repo_publish.sh pcsx-ab-nightly 20260920-fc8c992 ../pcsx-ab2/dist/packages/* -> emu/pcsx-ab/nightly/<version>/ (the same,
+#                                                                                 the classic emulator)
 #   tools/repo_publish.sh manuals build_manuals/*/*.pdf                        -> manuals/ (the user manuals, one PDF
 #                                                                                 per language - tools/build_manuals.py)
 #   tools/repo_publish.sh db db/covers*.db                                     -> db/
@@ -51,7 +58,8 @@
 #                                                                                 retroarch/cores/pc-image/
 #                                                                                 pc-retroarch/pc-cores/
 #                                                                                 psc-retroarch/win-retroarch/
-#                                                                                 pcsx/pcsx-ab, or
+#                                                                                 pcsx/pcsx-ab/pcsx-nightly/
+#                                                                                 pcsx-ab-nightly, or
 #                                                                                 "extension <name> <version>")
 #                                                                                 and re-indexes: the newest
 #                                                                                 *remaining* version is then
@@ -144,6 +152,8 @@ do_withdraw() {
         win-retroarch) [ -n "$pos1" ] || withdraw_usage 1; wdest="win/retroarch/$pos1" ;;
         pcsx)          [ -n "$pos1" ] || withdraw_usage 1; wdest="emu/pcsx-abnxt/$pos1" ;;
         pcsx-ab)       [ -n "$pos1" ] || withdraw_usage 1; wdest="emu/pcsx-ab/$pos1" ;;
+        pcsx-nightly)      [ -n "$pos1" ] || withdraw_usage 1; wdest="emu/pcsx-abnxt/nightly/$pos1" ;;
+        pcsx-ab-nightly)   [ -n "$pos1" ] || withdraw_usage 1; wdest="emu/pcsx-ab/nightly/$pos1" ;;
         extension)     [ -n "$pos1" ] && [ -n "$pos2" ] || withdraw_usage 1; wdest="extensions/$pos1/$pos2" ;;
         *) echo "unknown withdraw kind: $wkind" >&2; withdraw_usage 1 ;;
     esac
@@ -220,6 +230,8 @@ case "$KIND" in
     samples)   [ $# -ge 1 ] || usage 1; DEST="samples" ;;
     pcsx)      [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="emu/pcsx-abnxt/$VERSION" ;;
     pcsx-ab)   [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="emu/pcsx-ab/$VERSION" ;;
+    pcsx-nightly)    [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="emu/pcsx-abnxt/nightly/$VERSION" ;;
+    pcsx-ab-nightly)  [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="emu/pcsx-ab/nightly/$VERSION" ;;
     manuals)   [ $# -ge 1 ] || usage 1; DEST="manuals" ;;
     db)        [ $# -ge 1 ] || usage 1; DEST="db" ;;
     mirror)    [ $# -ge 2 ] || usage 1; NAME="$1"; shift; DEST="mirror/$NAME" ;;
