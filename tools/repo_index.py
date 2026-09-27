@@ -884,9 +884,19 @@ def index_pcsx(repo, base_url, name="pcsx-abnxt"):
     (release/testing, told apart by pcsx_channel_of), and emu/<name>/nightly/<version>/ the same way for a
     develop-push build - name = pcsx-ab or pcsx-abnxt. The newest build per channel (nightly/testing/release)
     is kept, an older one of the same channel pruned (an older nightly the way the site prunes elsewhere -
-    only the newest survives); emu/<name>/latest.json mirrors what is kept, keyed by channel. Returns
-    {"release": build, "testing": build, "nightly": build} (a channel missing when there is no build for it),
-    a build being {"version", "files": {plat: entry}, optionally "manifest"/"note"}."""
+    only the newest survives).
+
+    emu/<name>/latest.json stays the shape it always was at its top level - {"version", "files", optionally
+    "manifest"/"note"} - because make_win_package.sh (autobleem2/autobleem) and autobleem-appliance both read
+    it that way (json.load(...)["files"]["win64"]["url"]) to build the Windows product; RELEASE-4 must not
+    make either ship with no emulator. The top level is the newest *tag* build - release, else testing - what
+    a package build should take; only when there is no tag build at all (a nightly-only tree) does the
+    top level fall back to the nightly, so the file is never missing one while any build exists. The channels
+    themselves sit beside it under "channels": {"release": build, "testing": build, "nightly": build} (a
+    channel missing when there is no build for it) - what the download page's PS1 emulators tab reads.
+
+    Returns the "channels" dict (unaffected by the compatibility shape above) - a build being {"version",
+    "files": {plat: entry}, optionally "manifest"/"note"}."""
     root = os.path.join(repo, "emu", name)
     nightly_root = os.path.join(root, "nightly")
 
@@ -922,7 +932,12 @@ def index_pcsx(repo, base_url, name="pcsx-abnxt"):
 
     latest_path = os.path.join(root, "latest.json")
     if channels:
-        write_json(latest_path, channels)
+        # the top level is the newest tag build (release, else testing); only a nightly-only tree falls back
+        # to the nightly - never a nightly at top level when a tag build exists
+        top = channels.get("release") or channels.get("testing") or channels["nightly"]
+        latest = dict(top)
+        latest["channels"] = channels
+        write_json(latest_path, latest)
     elif os.path.isfile(latest_path):
         # every build folder is gone (a `repo_publish.sh withdraw` of the sole build, with none republished
         # yet) - a stale latest.json would otherwise keep offering a build whose folder no longer exists

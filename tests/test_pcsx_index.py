@@ -55,8 +55,11 @@ def test_release_testing_and_nightly_are_kept_side_by_side():
 
         with open(os.path.join(repo, "emu", "pcsx-abnxt", "latest.json"), encoding="utf-8") as fh:
             latest = json.load(fh)
-        assert set(latest) == {"release", "testing", "nightly"}
-        assert latest["nightly"]["version"] == "r26-31-gabc1234"
+        # the compatibility top level (make_win_package.sh / autobleem-appliance read {"version","files"}
+        # directly) is the tag build - release wins over the nightly even though it is older
+        assert latest["version"] == "v2.0.0"
+        assert set(latest["channels"]) == {"release", "testing", "nightly"}
+        assert latest["channels"]["nightly"]["version"] == "r26-31-gabc1234"
 
 
 def test_an_older_nightly_is_pruned_a_newer_one_kept():
@@ -143,3 +146,77 @@ def test_render_index_draws_the_three_channel_pills_for_the_ps1_emulators_tab():
     assert "<span class=\"chan rel\">v2.0.0</span>" in page
     assert "<span class=\"chan pre\">v2.1.0-alpha1</span>" in page
     assert "<span class=\"chan dev\">dev r26-31-gabc1234</span>" in page
+
+
+def test_latest_json_top_level_stays_the_tag_build_when_a_newer_nightly_exists():
+    """make_win_package.sh (autobleem2/autobleem) and autobleem-appliance both read latest.json's top level
+    as {"version","files",...} - json.load(...)["files"]["win64"]["url"] - to build the Windows product.
+    A nightly newer than the release must never become that top level, or the Windows product ships with
+    no emulator (the reported RELEASE-4 review blocker)."""
+    with tempfile.TemporaryDirectory() as repo:
+        now = time.time()
+        publish(repo, "pcsx-abnxt", "v2.0.0", now - 300, plats=("psc", "win64"))
+        publish(repo, "pcsx-abnxt", "r26-31-gabc1234", now, nightly=True, plats=("psc", "win64"))  # newer than the release
+
+        repo_index.index_pcsx(repo, BASE_URL, name="pcsx-abnxt")
+        with open(os.path.join(repo, "emu", "pcsx-abnxt", "latest.json"), encoding="utf-8") as fh:
+            latest = json.load(fh)
+
+        assert latest["version"] == "v2.0.0"
+        assert latest["files"]["win64"]["url"] == \
+            "https://example.test/emu/pcsx-abnxt/v2.0.0/pcsx-abnxt-v2.0.0-win64.zip"
+        assert latest["channels"]["release"]["version"] == "v2.0.0"
+        assert latest["channels"]["nightly"]["version"] == "r26-31-gabc1234"
+
+
+def test_latest_json_falls_back_to_the_nightly_when_there_is_no_tag_build_at_all():
+    with tempfile.TemporaryDirectory() as repo:
+        now = time.time()
+        publish(repo, "pcsx-abnxt", "r26-31-gabc1234", now, nightly=True, plats=("psc", "win64"))
+
+        repo_index.index_pcsx(repo, BASE_URL, name="pcsx-abnxt")
+        with open(os.path.join(repo, "emu", "pcsx-abnxt", "latest.json"), encoding="utf-8") as fh:
+            latest = json.load(fh)
+
+        assert latest["version"] == "r26-31-gabc1234"
+        assert latest["files"]["win64"]["url"] == \
+            "https://example.test/emu/pcsx-abnxt/nightly/r26-31-gabc1234/pcsx-abnxt-r26-31-gabc1234-win64.zip"
+        assert "release" not in latest["channels"] and "testing" not in latest["channels"]
+        assert latest["channels"]["nightly"]["version"] == "r26-31-gabc1234"
+
+
+def test_latest_json_top_level_prefers_release_over_testing():
+    with tempfile.TemporaryDirectory() as repo:
+        now = time.time()
+        publish(repo, "pcsx-abnxt", "v2.1.0-alpha1", now - 50)  # newer than the release, but not the release
+        publish(repo, "pcsx-abnxt", "v2.0.0", now - 300)
+
+        repo_index.index_pcsx(repo, BASE_URL, name="pcsx-abnxt")
+        with open(os.path.join(repo, "emu", "pcsx-abnxt", "latest.json"), encoding="utf-8") as fh:
+            latest = json.load(fh)
+        assert latest["version"] == "v2.0.0"
+
+
+def test_pcsx_ab_release_only_tree_still_indexes_and_writes_the_top_level():
+    """pcsx-ab is no longer developed (the owner's decision) - its CI keeps publishing tag builds only, no
+    nightly kind for it any more. index_pcsx (and repo_publish.sh's `pcsx-ab` kind) are otherwise unchanged:
+    an existing pre-release tag build (the testing channel) must still be listed on the download page and
+    still be what latest.json's compatibility top level names."""
+    with tempfile.TemporaryDirectory() as repo:
+        now = time.time()
+        publish(repo, "pcsx-ab", "v2.0.0-alpha2", now, plats=("psc", "win64"))
+
+        channels = repo_index.index_pcsx(repo, BASE_URL, name="pcsx-ab")
+        assert channels["testing"]["version"] == "v2.0.0-alpha2"
+        assert "release" not in channels and "nightly" not in channels
+
+        with open(os.path.join(repo, "emu", "pcsx-ab", "latest.json"), encoding="utf-8") as fh:
+            latest = json.load(fh)
+        assert latest["version"] == "v2.0.0-alpha2"
+        assert latest["files"]["win64"]["url"] == \
+            "https://example.test/emu/pcsx-ab/v2.0.0-alpha2/pcsx-ab-v2.0.0-alpha2-win64.zip"
+        assert latest["channels"]["testing"]["version"] == "v2.0.0-alpha2"
+
+        page = repo_index.render_index(BASE_URL, [], {}, {}, {}, [], {}, {}, pcsx={"pcsx-ab": channels})
+        assert "pcsx-ab, PlayStation Classic" in page
+        assert "<span class=\"chan pre\">v2.0.0-alpha2</span>" in page
