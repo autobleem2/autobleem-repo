@@ -53,6 +53,7 @@
             disable_http_challenge
         }
     }
+    import /etc/caddy/private/*.caddy
     import admin
     handle {
         import repo
