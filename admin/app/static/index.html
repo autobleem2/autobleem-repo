@@ -109,6 +109,7 @@ dialog#howto::backdrop{background:rgba(0,0,0,.6)}
 dialog#howto .head{display:flex;gap:1rem;align-items:center;justify-content:space-between;padding:.7rem 1rem;
   border-bottom:1px solid var(--line)}
 dialog#howto h2{margin:0;font-size:1.05rem}
+#needs .told{color:var(--ok,#7fe0a0);margin-left:.4rem}
 dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;background:#fff;color:#15202b}
 </style>
 </head>
@@ -278,7 +279,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
     </section>
   </section>
 </main>
-<dialog id="howto"><div class="head"><h2 id="howtoTitle"></h2><button type="button" onclick="document.getElementById('howto').close()">Close</button></div><div id="howtoBody"></div></dialog>
+<dialog id="howto"><div class="head"><h2 id="howtoTitle"></h2><span><button type="button" id="howtoDone" class="primary actonly" hidden>Done - tell Eleanor</button> <button type="button" onclick="document.getElementById('howto').close()">Close</button></span></div><div id="howtoBody"></div></dialog>
 <div id="toast" class="notice"></div>
 
 <script>
@@ -550,7 +551,7 @@ async function loadStore() {
 
 // -------------------------------------------------------------------------------- Roadmap tab (R27)
 const MS = [["a2", "alpha2"], ["a3", "alpha3"], ["a4", "alpha4"], ["b1", "beta1"], ["rc", "rc"], ["later", "later"]];
-let roadmapData = null, teamsData = null, openRow = null;
+let roadmapData = null, teamsData = null, openRow = null, ownerDone = new Map();
 function msKey(v) {
   v = (v || "").toLowerCase().replace(/\*/g, "").trim();
   const m = MS.find(([k, n]) => v === k || v.startsWith(n) || (k === "later" && v.startsWith("2.1")));
@@ -584,6 +585,18 @@ async function openHowto(n) {
   const dlg = document.getElementById("howto"), host = document.getElementById("howtoBody");
   const root = host.shadowRoot || host.attachShadow({mode: "open"});
   document.getElementById("howtoTitle").textContent = n.id + " - " + n.what;
+  const done = document.getElementById("howtoDone"), was = ownerDone.get(n.id);
+  done.hidden = !canAct;
+  done.disabled = !!was;
+  done.textContent = was ? "Eleanor was told " + when(was.at) : "Done - tell Eleanor";
+  done.onclick = async () => {
+    if (!confirm("Mark " + n.id + " as done and tell Eleanor?")) return;
+    try {
+      toast((await post("needs/" + encodeURIComponent(n.id) + "/done")).result);
+      ownerDone.set(n.id, {id: n.id, at: new Date().toISOString()});
+      dlg.close(); renderTeams(); loadAudit();
+    } catch (e) { toast(e.message, true); }
+  };
   root.replaceChildren(el("p", {}, "Loading..."));
   dlg.showModal();
   try {
@@ -612,7 +625,8 @@ function renderTeams() {
     for (const n of st.needs_owner)
       needs.append(el("li", {}, el("span", {class: "kind"}, n.kind), el("code", {class: "tid"}, n.id), " ", n.what,
         n.howto ? el("button", {type: "button", class: "howto", title: "How to do it", "aria-label": "How to do it",
-                                onclick: () => openHowto(n)}, "i") : null));
+                                onclick: () => openHowto(n)}, "i") : null,
+        ownerDone.has(n.id) ? el("small", {class: "told"}, " ✓ Eleanor told " + ago(ownerDone.get(n.id).at)) : null));
   } else {
     tb.append(el("tr", {}, el("td", {class: "dim"}, "No status yet" + (t.reason ? " (" + t.reason + ")" : "") + ".")));
   }
@@ -700,6 +714,7 @@ async function loadRoadmap() {
     renderRoadmap();
   } catch (e) { document.getElementById("milestones").replaceChildren(el("p", {class: "bad"}, e.message)); }
   try { teamsData = await api("teams"); } catch (e) { teamsData = {status: null, reason: e.message}; }
+  try { ownerDone = new Map((await api("needs/done")).map(d => [d.id, d])); } catch (e) { /* keep the last list */ }
   renderTeams();
 }
 for (const id of ["taskQ", "taskMs", "taskTeam", "taskSec", "taskState"])

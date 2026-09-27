@@ -8,6 +8,7 @@ read; acting needs the release team. A browser's action must carry X-AB-Request 
 it). Every action goes to the audit log, whoever and however.
 """
 import os
+import re
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -22,6 +23,7 @@ from .runs import Runs
 from .site import Health, channels, store_catalog
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
+NEED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,63}$")
 
 
 class NightlyRequest(BaseModel):
@@ -126,6 +128,22 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
         if html is None:
             raise HTTPException(404, "no such how-to page")
         return {"html": html}
+
+    # The owner's "Done" in a how-to page's window: an audit entry, which the Program Manager's listener
+    # reads (so the owner never has to write "done" to her himself).
+    @app.post("/admin/api/needs/{item_id}/done")
+    def need_done(item_id: str, who=Depends(actor)):
+        if not NEED_ID.match(item_id):
+            raise HTTPException(400, "bad id")
+        return act(who, "owner-done", {"id": item_id}, lambda: "Eleanor is told: %s is done" % item_id)
+
+    @app.get("/admin/api/needs/done")
+    def needs_done(who=Depends(viewer)):
+        latest = {}
+        for e in audit.recent(1000):  # newest first: keep each id's latest "done"
+            if e.get("action") == "owner-done" and e.get("params", {}).get("id") not in latest:
+                latest[e["params"]["id"]] = {"id": e["params"]["id"], "at": e["at"], "user": e["user"]}
+        return list(latest.values())
 
     @app.get("/admin/api/teams")
     def get_teams(who=Depends(viewer)):

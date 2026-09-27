@@ -271,3 +271,19 @@ def test_notifier_disk_alert_once_and_recovery(tmp_path, monkeypatch):
         n.check_disk()
         assert len(sent) == count, (free_gb, sent)
     assert "9.0 GB free" in sent[0] and "again" in sent[1]
+
+
+def test_owner_done_is_audited_and_listed(setup):
+    client, gh, _ = setup
+    url = "/admin/api/needs/INTERN-SETUP/done"
+    assert client.post(url, headers=browser("bob", True)).status_code == 403  # read-only member
+    assert client.post(url, headers=browser("alice")).status_code == 403  # no X-AB-Request
+    assert client.post("/admin/api/needs/bad%20id/done", headers=browser("alice", True)).status_code == 400
+    r = client.post(url, headers=browser("alice", True))
+    assert r.status_code == 200 and "INTERN-SETUP" in r.json()["result"]
+    client.post("/admin/api/needs/318/done", headers=browser("alice", True))
+    done = client.get("/admin/api/needs/done", headers=browser("bob")).json()
+    assert sorted(d["id"] for d in done) == ["318", "INTERN-SETUP"]
+    assert all(d["user"] == "alice" for d in done)
+    audit = client.get("/admin/api/audit", headers=browser("bob")).json()
+    assert audit[0]["action"] == "owner-done" and audit[0]["params"] == {"id": "318"}
