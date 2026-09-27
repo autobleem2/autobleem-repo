@@ -53,6 +53,11 @@ def test_split_cells_plain_row():
 # ------------------------------------------------------------------ parse_todo
 
 
+def test_parse_todo_row_key_set(todo_rows):
+    assert set(todo_rows[0].keys()) == {"id", "section", "title", "text", "where", "size", "who", "ms",
+                                        "team", "done", "done_date", "done_by"}
+
+
 def test_parse_todo_row_count_and_sections(todo_rows):
     assert [r["id"] for r in todo_rows] == ["R1", "R9", "R21", "R99", "K14", "D16"]
     assert by_id(todo_rows, "R1")["section"] == "R"
@@ -126,14 +131,16 @@ def test_milestone_code():
 
 
 def test_parse_milestones(milestones):
-    assert [m["code"] for m in milestones] == ["a2", "a3", "b1", "rc", "later"]
-    assert [m["order"] for m in milestones] == [0, 1, 2, 3, 4]
+    # list order IS the roadmap order - no separate "order" key
+    assert [milestone_code(m["name"]) for m in milestones] == ["a2", "a3", "b1", "rc", "later"]
     a2 = milestones[0]
     assert a2["name"] == "alpha2"
     assert a2["theme"] == "Ship what is already built; make the release train work"
     assert a2["gate"] == "`promote alpha` runs green end to end"
-    assert a2["who"] == "dev + owner decisions"
-    assert a2["size"] == "~2-3 days"
+
+
+def test_parse_milestones_key_set(milestones):
+    assert set(milestones[0].keys()) == {"name", "theme", "gate"}
 
 
 def test_parse_milestones_ignores_the_other_tables(milestones):

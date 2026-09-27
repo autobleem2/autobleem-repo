@@ -2,8 +2,9 @@
 milestones. Pure text in, pure data out - no network, no filesystem; the endpoints fetch the markdown
 through the App's contents API and hand it here. See `autobleem-main`'s `docs/admin-roadmap-plan.md`.
 
-The two names the panel's endpoints import: `parse_todo(markdown_text)` and
-`parse_milestones(markdown_text)`.
+The two names the panel's endpoints import (step 2, `feature/r27-api`): `parse_todo(markdown_text)` ->
+row dicts `{id, section, title, text, where, size, who, ms, team, done, done_date, done_by}`, and
+`parse_milestones(markdown_text)` -> milestone dicts `{name, theme, gate}` in roadmap order.
 """
 import re
 
@@ -111,9 +112,10 @@ def milestone_code(name):
 
 
 def parse_milestones(markdown_text):
-    """`docs/roadmap.md`'s milestone table (`## The milestones`) -> a list of dicts `{order, code, name,
-    theme, gate, who, size}` in table order. `order` is the 0-based position, `code` the `todo.md`-style
-    code (`milestone_code`)."""
+    """`docs/roadmap.md`'s milestone table (`## The milestones`) -> a list of dicts `{name, theme, gate}`,
+    in table order (the order itself is the milestone order - no separate `order` key). `name` is the
+    table's own spelling (`alpha2`, `rc1 -> 2.0.0`, `2.1+`); `milestone_code()` maps it to `todo.md`'s
+    `Ms` column when something needs to match rows to a milestone."""
     lines = markdown_text.splitlines()
     milestones = []
     in_table, past_separator = False, False
@@ -129,18 +131,10 @@ def parse_milestones(markdown_text):
             past_separator = True  # the `|---|---|...|` row under the header
             continue
         cells = split_cells(line)
-        if len(cells) < 5:
+        if len(cells) < 3:
             continue
         name = _first_bold(cells[0]) or cells[0]
-        milestones.append({
-            "order": len(milestones),
-            "code": milestone_code(name),
-            "name": name,
-            "theme": cells[1],
-            "gate": cells[2],
-            "who": cells[3],
-            "size": cells[4],
-        })
+        milestones.append({"name": name, "theme": cells[1], "gate": cells[2]})
     return milestones
 
 
@@ -148,12 +142,13 @@ def milestone_progress(rows, milestones):
     """One summary per milestone, in `milestones`' order: `done`/`open`/`total` rows, `pct` done, and
     `open_by_team` (team name -> open-row count, `"unassigned"` for a row with no `Team:`). Also returns
     the sorted list of `ms` codes in `rows` that no milestone claims (a milestone renamed or removed in
-    `roadmap.md` while `todo.md` still points at its old code) - callers show those apart rather than
-    silently dropping the rows."""
-    known = {m["code"] for m in milestones}
+    `roadmap.md` while `todo.md` still points at its old code, or a compound code like `a2/b1`) - callers
+    show those apart rather than silently dropping the rows."""
+    codes = [milestone_code(m["name"]) for m in milestones]
+    known = set(codes)
     summaries = []
-    for m in milestones:
-        mine = [r for r in rows if r["ms"] == m["code"]]
+    for m, code in zip(milestones, codes):
+        mine = [r for r in rows if r["ms"] == code]
         done = [r for r in mine if r["done"]]
         open_rows = [r for r in mine if not r["done"]]
         by_team = {}
@@ -162,7 +157,7 @@ def milestone_progress(rows, milestones):
             by_team[key] = by_team.get(key, 0) + 1
         total = len(mine)
         summaries.append({
-            "code": m["code"],
+            "code": code,
             "name": m["name"],
             "theme": m["theme"],
             "gate": m["gate"],
