@@ -1067,24 +1067,24 @@ def index_manuals(repo, base_url):
 #*******************************
 # development builds
 #*******************************
-# one development build on the site (the owner's call, 2026-09-23 - the build server's disk ran full). A run
-# publishes in pieces - each image as it is built, the packages last - so the one before stays while the
-# newest has no packages yet, and while it has no images yet: neither the launcher's update (packages) nor
-# Imager's nightly list (images) is ever left with nothing between two publishes
+# one development build on the site (the owner's call, 2026-09-23 - the build server's disk ran full;
+# PLATFORM-10, 2026-09-27 - the disk ran full again, to three kept builds, one of them a duplicate). A run
+# used to publish in pieces with each piece indexed as it arrived, so a fallback kept the newest older folder
+# with packages (or with images) while the newest lacked either, rather than leave the launcher's update or
+# Imager's nightly list pointing at nothing. That fallback is gone (PLATFORM-10): since the `--partial` +
+# `.incomplete` marker mechanism (2026-09-23, autobleem-appliance's assemble.yml - see publish-nightly's
+# `needs`/`if`, which only removes the marker and triggers this index once assemble, image and publish-release
+# have all succeeded or been legitimately skipped for that run), a folder is never indexed at all until it
+# already has every piece of that run - packages and images together, in one atomic step. So the newest
+# non-incomplete folder always has both already, and keeping extra older folders "just in case" only wasted
+# disk. The site keeps exactly the single newest nightly; everything else under nightly/ is pruned.
 NIGHTLY_KEEP = 1
 
 
-def nightly_folders_to_keep(folders, has_images, has_packages=lambda f: True):
-    """The newest NIGHTLY_KEEP of `folders` (oldest first), plus the newest older one with packages while none
-    of those has any, and the newest older one with images while none of those has any."""
-    keep = folders[-NIGHTLY_KEEP:]
-    older = folders[:-NIGHTLY_KEEP]
-    for has in (has_packages, has_images):
-        if keep and not any(has(f) for f in keep):
-            found = [f for f in older if has(f)]
-            if found and found[-1] not in keep:
-                keep = [found[-1]] + keep
-    return sorted(keep, key=folders.index)
+def nightly_folders_to_keep(folders):
+    """The newest NIGHTLY_KEEP of `folders` (oldest first) - see the module comment above for why no fallback
+    is needed any more."""
+    return folders[-NIGHTLY_KEEP:]
 
 
 # repo_publish.sh --partial leaves it in nightly/<version>/ until the run's last publish takes it away
@@ -1122,15 +1122,7 @@ def index_nightly(repo, base_url):
         folders, lambda f: os.path.exists(os.path.join(f, INCOMPLETE_MARKER)), published, datetime.now().timestamp())
     prune(stale, [], "unfinished development build")
     folders = [f for f in folders if f not in unfinished and f not in stale]
-    def has_images(folder):
-        return any(IMAGE_RE.match(os.path.basename(p)) or PC_IMAGE_RE.match(os.path.basename(p))
-                   for p in data_files(folder))
-
-    def has_packages(folder):
-        return any(any(pattern.match(os.path.basename(p)) for _, pattern, _ in PACKAGE_KINDS)
-                   for p in data_files(folder))
-
-    keep = nightly_folders_to_keep(folders, has_images, has_packages)
+    keep = nightly_folders_to_keep(folders)
     prune([f for f in folders if f not in keep], [], "development build")
     builds = []
     for folder in keep:
