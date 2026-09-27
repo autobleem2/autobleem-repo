@@ -93,6 +93,7 @@ label{white-space:nowrap;margin-right:.8rem}
 .badge{display:inline-block;font-size:.72rem;padding:0 .45rem;border-radius:999px;border:1px solid var(--line);
   color:var(--dim);white-space:nowrap}
 .state-working{color:var(--rel)}.state-waiting{color:var(--pre)}.state-asleep,.state-unknown{color:var(--dim)}
+td.tid,code.tid{white-space:nowrap}
 tr.task{cursor:pointer}tr.task.done td{opacity:.55}tr.task.done .ttl{text-decoration:line-through}
 tr.more td{font-size:.86rem;color:var(--dim);white-space:normal}
 .actonly{display:none}
@@ -602,14 +603,14 @@ function renderTeams() {
     for (const m of st.teams) tb.append(el("tr", {},
       el("td", {}, m.name, el("small", {}, m.team)),
       el("td", {class: "state-" + m.state}, m.state),
-      el("td", {}, m.items.map(i => el("div", {}, el("code", {}, i.id), " ", i.what)), m.note ? el("small", {}, m.note) : null)));
+      el("td", {}, m.items.map(i => el("div", {}, el("code", {class: "tid"}, i.id), " ", i.what)), m.note ? el("small", {}, m.note) : null)));
     const u = st.usage || {};
     document.getElementById("usage").textContent = u.five_hour_percent !== undefined
       ? "Usage: 5-hour " + u.five_hour_percent + "%" +
         (u.five_hour_resets_at ? " (resets " + new Date(u.five_hour_resets_at).toLocaleTimeString() + ")" : "") +
         " · weekly " + u.weekly_percent + "%" + (u.weekly_cap_today_percent ? " of today's " + u.weekly_cap_today_percent + "%" : "") : "";
     for (const n of st.needs_owner)
-      needs.append(el("li", {}, el("span", {class: "kind"}, n.kind), el("code", {}, n.id), " ", n.what,
+      needs.append(el("li", {}, el("span", {class: "kind"}, n.kind), el("code", {class: "tid"}, n.id), " ", n.what,
         n.howto ? el("button", {type: "button", class: "howto", title: "How to do it", "aria-label": "How to do it",
                                 onclick: () => openHowto(n)}, "i") : null));
   } else {
@@ -619,7 +620,7 @@ function renderTeams() {
   const mine = roadmapData ? roadmapData.rows.filter(r => !r.done && (r.who || "").toLowerCase().includes("owner") &&
                                                       !listed.has(r.id)) : [];
   for (const r of mine.slice(0, 5))
-    needs.append(el("li", {}, el("span", {class: "kind"}, "todo"), el("code", {}, r.id), " ", r.title));
+    needs.append(el("li", {}, el("span", {class: "kind"}, "todo"), el("code", {class: "tid"}, r.id), " ", r.title));
   if (mine.length > 5) needs.append(el("li", {class: "dim"}, "and " + (mine.length - 5) + " more todo rows for you - ",
     el("button", {type: "button", class: "link", onclick: () => {
       // every other filter off, or a team/section picked earlier hides the owner's rows (they have no team)
@@ -675,7 +676,7 @@ function renderTasks(d) {
   for (const r of rows) {
     tb.append(el("tr", {class: "task" + (r.done ? " done" : ""),
         onclick: () => { openRow = openRow === r.id ? null : r.id; renderTasks(d); }},
-      el("td", {}, el("code", {}, r.id)),
+      el("td", {class: "tid"}, el("code", {}, r.id)),
       el("td", {}, el("span", {class: "ttl"}, r.title),
         r.done ? el("small", {}, "done " + (r.done_date || "") + (r.done_by ? " · " + r.done_by : "")) : null),
       el("td", {}, r.ms ? el("span", {class: "badge"}, r.ms) : null),
