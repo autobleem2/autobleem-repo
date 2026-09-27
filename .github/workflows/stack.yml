@@ -25,7 +25,7 @@ concurrency:
 jobs:
   deploy:
     if: vars.AB_CI_ENABLED == 'true'
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, psc-build]
     env:
       SITE_DIR: /home/claude/autobleem-site
       SITE_UID: "1004" # claude, the checkout's owner

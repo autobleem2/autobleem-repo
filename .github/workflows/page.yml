@@ -42,7 +42,7 @@ jobs:
 
   publish:
     needs: check
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, psc-build]
     env:
       AB_REPO_DIR: /home/claude/autobleem-repo
     steps:
