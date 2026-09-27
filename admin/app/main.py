@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from .actions import Actions, Audit
+from .bugs_source import BugsSource
 from .config import settings as default_settings
 from .github import GitHub, GitHubError
 from .notify import Notifier
@@ -53,6 +54,7 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
     runs, health, actions = Runs(gh, settings), Health(gh, settings), Actions(gh, settings)
     audit = Audit(settings.data_dir)
     source = RoadmapSource(gh, settings)
+    bugs_source = BugsSource(gh, settings)
     app = FastAPI(title="AutoBleem admin", docs_url=None, redoc_url=None, openapi_url="/admin/api/openapi.json")
 
     def viewer(request: Request):
@@ -116,6 +118,13 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
     def get_roadmap(who=Depends(viewer)):
         try:
             return source.roadmap()
+        except GitHubError as e:
+            raise HTTPException(502, str(e))
+
+    @app.get("/admin/api/bugs")
+    def get_bugs(who=Depends(viewer)):
+        try:
+            return {"bugs": bugs_source.bugs()}
         except GitHubError as e:
             raise HTTPException(502, str(e))
 
