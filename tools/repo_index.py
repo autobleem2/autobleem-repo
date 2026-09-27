@@ -1071,20 +1071,60 @@ def index_manuals(repo, base_url):
 # PLATFORM-10, 2026-09-27 - the disk ran full again, to three kept builds, one of them a duplicate). A run
 # used to publish in pieces with each piece indexed as it arrived, so a fallback kept the newest older folder
 # with packages (or with images) while the newest lacked either, rather than leave the launcher's update or
-# Imager's nightly list pointing at nothing. That fallback is gone (PLATFORM-10): since the `--partial` +
-# `.incomplete` marker mechanism (2026-09-23, autobleem-appliance's assemble.yml - see publish-nightly's
-# `needs`/`if`, which only removes the marker and triggers this index once assemble, image and publish-release
-# have all succeeded or been legitimately skipped for that run), a folder is never indexed at all until it
-# already has every piece of that run - packages and images together, in one atomic step. So the newest
-# non-incomplete folder always has both already, and keeping extra older folders "just in case" only wasted
-# disk. The site keeps exactly the single newest nightly; everything else under nightly/ is pruned.
+# Imager's nightly list pointing at nothing. That per-piece fallback is gone (PLATFORM-10): since the
+# `--partial` + `.incomplete` marker mechanism (2026-09-23, autobleem-appliance's assemble.yml - see
+# publish-nightly's `needs`/`if`, which only removes the marker and triggers this index once assemble, image
+# and publish-release have all succeeded or been legitimately skipped for that run), a folder is never
+# indexed at all until it already has every piece *that run built* - packages and images together, in one
+# atomic step.
+#
+# But "every piece that run built" is not always everything: assemble.yml's workflow_dispatch can ask for a
+# subset of platforms (`platforms`) or skip the three images (`images: false`) - a legitimate, complete
+# publish of a smaller build. If the components changed since the last nightly, that gets its own new
+# version (plan's -n<hash>) and publish-nightly de-marks it same as a full run, leaving a folder with only
+# some platforms' packages and/or no images at all. Keeping only that one folder would then point the
+# rpi/pcusb launchers' update, and Imager's nightly list, at nothing for those platforms until a full build
+# comes along - so a second rule (PLATFORM-10 review): while the newest folder is partial, the newest older
+# FULL folder is also kept, and nothing else - a normal (full) night still leaves exactly one folder on disk.
+# `nightly_folder_is_full()` reads the same sources.json the plan job's own skip check reads (the `printf
+# '{"sources": ...` in publish-nightly, the fields it looks for around assemble.yml's skip logic): a missing
+# sources.json, or one without "images"/"platforms", predates those keys and counts as full, exactly as the
+# plan job treats it.
 NIGHTLY_KEEP = 1
 
+# assemble.yml's plan job, workflow_dispatch's `platforms` left empty: "rpi-armhf rpi-arm64 pcusb psc win"
+NIGHTLY_FULL_PLATFORMS = frozenset(["rpi-armhf", "rpi-arm64", "pcusb", "psc", "win"])
 
-def nightly_folders_to_keep(folders):
-    """The newest NIGHTLY_KEEP of `folders` (oldest first) - see the module comment above for why no fallback
-    is needed any more."""
-    return folders[-NIGHTLY_KEEP:]
+
+def nightly_folder_is_full(folder):
+    """Whether `folder` was published as a full build - every platform, with images - per its sources.json
+    (publish-nightly's `images`/`platforms` fields), the same rule the plan job's own skip check uses. No
+    sources.json, or one without both keys, predates them and counts as full."""
+    path = os.path.join(folder, "sources.json")
+    if not os.path.isfile(path):
+        return True
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return True
+    if "images" not in data or "platforms" not in data:
+        return True
+    if not data["images"]:
+        return False
+    return NIGHTLY_FULL_PLATFORMS.issubset(str(data["platforms"]).split())
+
+
+def nightly_folders_to_keep(folders, is_full=nightly_folder_is_full):
+    """The newest of `folders` (oldest first), plus the newest older FULL one while the newest is itself only
+    a partial build (some platforms, or no images) - see the module comment above."""
+    if not folders:
+        return []
+    newest = folders[-1]
+    if is_full(newest):
+        return [newest]
+    older_full = [f for f in folders[:-1] if is_full(f)]
+    return ([older_full[-1]] if older_full else []) + [newest]
 
 
 # repo_publish.sh --partial leaves it in nightly/<version>/ until the run's last publish takes it away
@@ -1102,7 +1142,7 @@ def unfinished_nightlies(folders, is_incomplete, published, now):
 def index_nightly(repo, base_url):
     """nightly/<version>/ - the development builds of develop (the nightly run, or one started by hand): the
     packages a release has, named by `git describe` (v2.0.0-alpha2-14-gabc1234), and the images when that run
-    made them. The NIGHTLY_KEEP newest by publish time are kept; each folder gets release.json + SHA256SUMS,
+    made them. nightly_folders_to_keep() decides what stays; each folder gets release.json + SHA256SUMS,
     nightly/latest.json is the newest with packages. An installed launcher's update check never reads this - it stays on
     releases/ (latest.json, unstable.json)."""
     root = os.path.join(repo, "nightly")
