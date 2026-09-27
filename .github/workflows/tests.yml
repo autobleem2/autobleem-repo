@@ -1,0 +1,25 @@
+# The tools' own test suite (repo_index.py, repo_publish.sh's page-generator merge, the store/extension/pcsx
+# indexers): tests/*.py ran in no workflow until now (PLATFORM-12) - only admin/'s own suite ran, in
+# stack.yml. A hosted runner, no container: everything tests/ imports is the standard library plus the tools
+# it exercises directly, and pytest. Gated by AB_CI_ENABLED, like every autobleem2 workflow.
+name: tests
+
+on:
+  push:
+    branches: [develop, master]
+  pull_request:
+    branches: [develop, master]
+
+jobs:
+  tests:
+    if: vars.AB_CI_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Install pytest
+        run: pip install -q pytest
+      - name: Run tests/
+        run: python -m pytest tests/ -v
