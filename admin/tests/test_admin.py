@@ -3,6 +3,7 @@ time-left estimate, the channels, and the notifier.
 
     cd admin && python -m pytest -q
 """
+import base64
 import json
 import os
 from datetime import datetime, timezone
@@ -48,6 +49,7 @@ class FakeGitHub:
                          "labels": [{"name": "self-hosted"}, {"name": "psc"}]},
                         {"id": 2, "name": "runner-2", "status": "offline", "busy": False, "labels": []}]
         self.runners_status = 200
+        self.contents = {}  # path (under autobleem-main's develop) -> text, for the roadmap/bugs contents API
 
     def cached(self, key, ttl, fn):
         return fn()
@@ -63,6 +65,11 @@ class FakeGitHub:
 
     def call(self, method, path, body=None):
         self.calls.append((method, path, body))
+        if "/contents/" in path:
+            name = path.split("/contents/", 1)[1].split("?", 1)[0]
+            if name not in self.contents:
+                raise GitHubError(404, "Not Found")
+            return {"content": base64.b64encode(self.contents[name].encode("utf-8")).decode("ascii")}
         if "/actions/runners?per_page" in path:
             if self.runners_status != 200:
                 raise GitHubError(self.runners_status, "no access")

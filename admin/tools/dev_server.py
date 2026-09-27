@@ -61,7 +61,29 @@ def build_github():
         {"id": 2, "name": "pc-build-1", "status": "online", "busy": False,
          "labels": [{"name": "self-hosted"}, {"name": "windows"}, {"name": "pcusb"}]},
     ]
+    gh.contents["docs/bugs.md"] = BUGS_MD
     return gh
+
+
+# A trimmed, realistic docs/bugs.md (PLATFORM-9) for the Bugs tab preview - open bugs of every severity and
+# a mix of platforms, plus a closed/wontfix/duplicate one for the folded section.
+BUGS_MD = """# Known bugs
+
+| BUG | Title | Platform | Severity | State | Found | Fix |
+|---|---|---|---|---|---|---|
+| BUG-1 | A game starts by itself after leaving Options | psc | major | fixed-untested | console session, 2026-09-27 | [CONSOLE-11](todo.md) |
+| BUG-2 | Pad-mapping wizard: analog mapping does not work | psc | major | confirmed | console session, 2026-09-27 | [TOOLS-9](todo.md) |
+| BUG-6 | The mouse pointer shows after a Bluetooth pad reconnects | psc | major | confirmed | console, 2026-09-26 | [KERNEL-6](todo.md) |
+| BUG-9 | In-game notices are drawn under the scanlines | psc, rpi, pcusb, win | minor | fixing | console session, 2026-09-27 | [EMU-15](todo.md) |
+| BUG-10 | Bluetooth cannot pair on a Pi when rfkill soft-blocks it | rpi | major | confirmed | Pi 400 test, 2026-09-27 | [TOOLS-10](todo.md) |
+| BUG-13 | The pad is dead for 1-3 s after every game on a Pi 400 | rpi | minor | open | Pi 400 test | - |
+| BUG-14 | The homebrew RSP tests crash a core; never tried with a real game | rpi, pcusb, win | minor | open | RetroArch core tests | [EMU-12](todo.md) |
+| BUG-18 | A `dpkg -S` pipe could hit the same SIGPIPE race as BUG-16 | all | minor | open | code review | - |
+| BUG-97 | Blocker used only to show the sort order in this preview | psc | blocker | open | preview data | - |
+| BUG-11 | No notice when pad swap is on but the emulator lacks support | psc | minor | wontfix | console session, 2026-09-27 (no longer developed) | - |
+| BUG-99 | Reported twice by two testers on the same day | rpi | major | duplicate of BUG-10 | Pi 400 test, 2026-09-27 | - |
+| BUG-16 | A version print piped into `head` under `pipefail` exits 141 at random | all | minor | closed | CI run, 2026-09-27; fixed and verified on a green run | - |
+"""
 
 
 def build_site_tree(root):

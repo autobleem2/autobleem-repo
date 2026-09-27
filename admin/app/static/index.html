@@ -86,6 +86,15 @@ label{white-space:nowrap;margin-right:.8rem}
 .card .head h3{margin:0}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:0 1.2rem}
 @media (max-width:44rem){.cols{grid-template-columns:1fr}}
+/* PLATFORM-9 - the bugs tab */
+#bugsClosedDetails{margin-top:1rem}
+#bugsClosedDetails summary{cursor:pointer;color:var(--dim);font-size:.9rem;padding:.3rem 0}
+#bugsClosedDetails summary:hover{color:#fff}
+#bugsClosedDetails[open] summary{margin-bottom:.3rem}
+.sev-blocker{color:var(--bad)}.sev-major{color:var(--warn)}.sev-minor{color:var(--dim)}
+.bstate-open,.bstate-confirmed{color:var(--pre)}.bstate-fixing{color:var(--cyan)}
+.bstate-fixed-untested{color:var(--dev)}.bstate-closed{color:var(--rel)}
+.bstate-wontfix,.bstate-duplicate{color:var(--dim)}
 /* R27 - the roadmap tab */
 .needs{margin:0;padding-left:1.1rem}.needs li{margin:.25rem 0}.needs .kind{font-size:.75rem;color:var(--pre);margin-right:.4rem}
 .ms{cursor:pointer}.ms.sel{border-color:var(--cyan)}.ms .gate{color:var(--dim);font-size:.88rem;margin:.2rem 0 .3rem}
@@ -122,6 +131,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
 </div>
 <nav class="tabs" id="tabs">
   <a href="#roadmap" data-tab="roadmap">Roadmap</a>
+  <a href="#bugs" data-tab="bugs">Bugs</a>
   <a href="#builds" data-tab="builds">Builds</a>
   <a href="#releases" data-tab="releases">Releases</a>
   <a href="#store" data-tab="store">Store</a>
@@ -160,6 +170,35 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
         <thead><tr><th>ID</th><th>Task</th><th>Milestone</th><th>Team</th><th>Size</th></tr></thead>
         <tbody id="tasks"></tbody>
       </table></div>
+    </section>
+  </section>
+
+  <section id="tab-bugs" class="tab-content">
+    <section class="panel">
+      <h2>Bugs <small id="bugCount"></small></h2>
+      <div class="row">
+        <select id="bugState"><option value="">every state</option>
+          <option value="open">open</option><option value="confirmed">confirmed</option>
+          <option value="fixing">fixing</option><option value="fixed-untested">fixed-untested</option>
+          <option value="closed">closed</option><option value="wontfix">wontfix</option>
+          <option value="duplicate">duplicate</option>
+        </select>
+        <select id="bugPlatform"><option value="">every platform</option>
+          <option value="psc">psc</option><option value="rpi">rpi</option>
+          <option value="pcusb">pcusb</option><option value="win">win</option>
+        </select>
+      </div>
+      <div class="scroll"><table>
+        <thead><tr><th>BUG</th><th>Title</th><th>Platform</th><th>Severity</th><th>State</th><th>Found</th><th>Fix</th></tr></thead>
+        <tbody id="bugsOpen"></tbody>
+      </table></div>
+      <details id="bugsClosedDetails">
+        <summary>Closed / wontfix / duplicate <span id="bugsClosedCount" class="dim"></span></summary>
+        <div class="scroll"><table>
+          <thead><tr><th>BUG</th><th>Title</th><th>Platform</th><th>Severity</th><th>State</th><th>Found</th><th>Fix</th></tr></thead>
+          <tbody id="bugsClosed"></tbody>
+        </table></div>
+      </details>
     </section>
   </section>
 
@@ -287,7 +326,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
 const API = "/admin/api/";let canAct = false, firstStatus = true;
 const seenActive = new Set();
 const selectedJob = {}; // run id -> job name selected in that card
-const TABS = ["roadmap", "builds", "releases", "store", "server", "audit"];
+const TABS = ["roadmap", "bugs", "builds", "releases", "store", "server", "audit"];
 
 function el(tag, attrs, ...kids) {
   const e = document.createElement(tag);
@@ -721,6 +760,56 @@ for (const id of ["taskQ", "taskMs", "taskTeam", "taskSec", "taskState"])
   document.getElementById(id).addEventListener(id === "taskQ" ? "input" : "change",
     () => { renderRoadmap.ownerOnly = false; renderRoadmap(); });
 
+// -------------------------------------------------------------------------------- Bugs tab (PLATFORM-9)
+const SEV_ORDER = {blocker: 0, major: 1, minor: 2};
+let bugsData = null;
+function bugIsOpen(b) { return !["closed", "wontfix", "duplicate"].includes(b.state); }
+function bugMatchesPlatform(b, p) { return !p || b.platforms.includes(p) || (b.platforms.length === 1 && b.platforms[0] === "all"); }
+function bugRow(b) {
+  return el("tr", {},
+    el("td", {class: "tid"}, el("code", {}, b.id)),
+    el("td", {}, b.title),
+    el("td", {}, b.platforms.join(", ")),
+    el("td", {class: "sev-" + b.severity}, b.severity),
+    el("td", {class: "bstate-" + b.state}, b.state === "duplicate" ? "duplicate of " + b.duplicate_of : b.state),
+    el("td", {class: "when"}, b.found),
+    el("td", {}, b.fix_id ? el("a", {href: "#roadmap", onclick: () => {
+        for (const id of ["taskQ", "taskMs", "taskTeam", "taskSec", "taskState"]) document.getElementById(id).value = "";
+        renderRoadmap.ownerOnly = false;
+        openRow = b.fix_id;
+        location.hash = "roadmap"; showTab("roadmap");
+        if (roadmapData) renderRoadmap();
+      }}, b.fix_id) : el("span", {class: "dim"}, "-")));
+}
+function renderBugs() {
+  if (!bugsData) return;
+  const state = document.getElementById("bugState").value, platform = document.getElementById("bugPlatform").value;
+  const filtered = bugsData.filter(b => (!state || b.state === state) && bugMatchesPlatform(b, platform));
+  const open = filtered.filter(bugIsOpen).sort((a, b) => (SEV_ORDER[a.severity] ?? 99) - (SEV_ORDER[b.severity] ?? 99) || a.number - b.number);
+  const closed = filtered.filter(b => !bugIsOpen(b)).sort((a, b) => a.number - b.number);
+  document.getElementById("bugCount").textContent = open.length + " open of " + filtered.length + " shown";
+  const openTb = document.getElementById("bugsOpen"); openTb.replaceChildren();
+  if (!open.length) openTb.append(el("tr", {}, el("td", {colspan: 7, class: "dim"}, "No open bugs match.")));
+  for (const b of open) openTb.append(bugRow(b));
+  const closedTb = document.getElementById("bugsClosed"); closedTb.replaceChildren();
+  for (const b of closed) closedTb.append(bugRow(b));
+  document.getElementById("bugsClosedCount").textContent = "(" + closed.length + ")";
+  const allOpenCount = bugsData.filter(bugIsOpen).length;
+  const tab = document.querySelector('nav.tabs a[data-tab="bugs"]');
+  if (tab) tab.textContent = "Bugs (" + allOpenCount + ")";
+}
+async function loadBugs() {
+  loadBugs.loaded = true;
+  try {
+    bugsData = (await api("bugs")).bugs;
+    renderBugs();
+  } catch (e) {
+    document.getElementById("bugsOpen").replaceChildren(el("tr", {}, el("td", {colspan: 7, class: "bad"}, e.message)));
+  }
+}
+document.getElementById("bugState").addEventListener("change", renderBugs);
+document.getElementById("bugPlatform").addEventListener("change", renderBugs);
+
 // -------------------------------------------------------------------------------- tabs
 function currentTab() {
   const h = (location.hash || "").replace("#", "");
@@ -735,6 +824,7 @@ function showTab(name) {
   try { localStorage.setItem("ab-admin-tab", name); } catch (e) { /* private browsing etc */ }
   if (name === "store" && !renderStore.loaded) loadStore();
   if (name === "roadmap" && !loadRoadmap.loaded) loadRoadmap();
+  if (name === "bugs" && !loadBugs.loaded) loadBugs();
 }
 function initTabs() {
   let name = currentTab();
@@ -779,9 +869,10 @@ async function start() {
   document.getElementById("storeGo").onclick = () => act("Republish the site (Store included)", "page");
   initTabs();
   if (canAct) preview();
-  refresh(); loadSlow(); loadAudit();
+  refresh(); loadSlow(); loadAudit(); loadBugs();
   setInterval(loadSlow, 60000); setInterval(loadAudit, 60000);
   setInterval(() => { if (loadRoadmap.loaded) loadRoadmap(); }, 60000);
+  setInterval(loadBugs, 60000);
 }
 start().catch(e => toast(e.message, true));
 </script>
