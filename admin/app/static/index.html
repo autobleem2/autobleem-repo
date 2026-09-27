@@ -543,6 +543,7 @@ function msKey(v) {
   const m = MS.find(([k, n]) => v === k || v.startsWith(n) || (k === "later" && v.startsWith("2.1")));
   return m ? m[0] : v;
 }
+function teamOf(r) { return (r.team || "").split(/[(,;]/)[0].trim(); }
 function ago(iso) {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.round(m / 60) + " h ago";
@@ -569,9 +570,15 @@ function renderTeams() {
     tb.append(el("tr", {}, el("td", {class: "dim"}, "No status yet" + (t.reason ? " (" + t.reason + ")" : "") + ".")));
   }
   const listed = new Set(st ? st.needs_owner.map(n => n.id) : []);
-  if (roadmapData) for (const r of roadmapData.rows)
-    if (!r.done && (r.who || "").toLowerCase().includes("owner") && !listed.has(r.id))
-      needs.append(el("li", {}, el("span", {class: "kind"}, "todo"), el("code", {}, r.id), " ", r.title));
+  const mine = roadmapData ? roadmapData.rows.filter(r => !r.done && (r.who || "").toLowerCase().includes("owner") &&
+                                                      !listed.has(r.id)) : [];
+  for (const r of mine.slice(0, 5))
+    needs.append(el("li", {}, el("span", {class: "kind"}, "todo"), el("code", {}, r.id), " ", r.title));
+  if (mine.length > 5) needs.append(el("li", {class: "dim"}, "and " + (mine.length - 5) + " more todo rows for you - ",
+    el("button", {type: "button", class: "link", onclick: () => {
+      document.getElementById("taskQ").value = ""; document.getElementById("taskState").value = "open";
+      document.getElementById("taskMs").value = ""; renderRoadmap.ownerOnly = true; renderRoadmap();
+      document.getElementById("tasks").scrollIntoView({behavior: "smooth"}); }}, "show them")));
   if (!needs.children.length) needs.append(el("li", {class: "dim"}, "Nothing is waiting for you."));
 }
 function fillSelect(id, values, label) {
@@ -591,7 +598,7 @@ function renderMilestones(d) {
     const done = rows.filter(r => r.done).length, open = rows.length - done;
     if (firstOpen === null && open) firstOpen = key;
     const teams = {};
-    rows.filter(r => !r.done).forEach(r => { const t = r.team || "no team"; teams[t] = (teams[t] || 0) + 1; });
+    rows.filter(r => !r.done).forEach(r => { const t = teamOf(r) || "no team"; teams[t] = (teams[t] || 0) + 1; });
     const m = byKey[key] || {}, sel = chosen === key, expanded = sel || key === firstOpen;
     box.append(el("div", {class: "card ms" + (sel ? " sel" : ""), onclick: () => {
         document.getElementById("taskMs").value = sel ? "" : key; renderRoadmap(); }},
@@ -608,8 +615,9 @@ function renderTasks(d) {
   const q = document.getElementById("taskQ").value.trim().toLowerCase(), ms = document.getElementById("taskMs").value;
   const team = document.getElementById("taskTeam").value, sec = document.getElementById("taskSec").value;
   const state = document.getElementById("taskState").value;
-  const rows = d.rows.filter(r => (!ms || msKey(r.ms) === ms) && (!team || r.team === team) &&
+  const rows = d.rows.filter(r => (!ms || msKey(r.ms) === ms) && (!team || teamOf(r) === team) &&
     (!sec || r.section === sec) && (!state || (state === "done") === !!r.done) &&
+    (!renderRoadmap.ownerOnly || (r.who || "").toLowerCase().includes("owner")) &&
     (!q || (r.id + " " + r.title + " " + (r.text || "")).toLowerCase().includes(q)));
   document.getElementById("taskCount").textContent = rows.length + " of " + d.rows.length;
   const tb = document.getElementById("tasks"); tb.replaceChildren();
@@ -621,7 +629,7 @@ function renderTasks(d) {
       el("td", {}, el("span", {class: "ttl"}, r.title),
         r.done ? el("small", {}, "done " + (r.done_date || "") + (r.done_by ? " · " + r.done_by : "")) : null),
       el("td", {}, r.ms ? el("span", {class: "badge"}, r.ms) : null),
-      el("td", {}, r.team ? el("span", {class: "badge"}, r.team) : null),
+      el("td", {}, teamOf(r) ? el("span", {class: "badge"}, teamOf(r)) : null),
       el("td", {class: "num"}, r.size || "")));
     if (openRow === r.id) tb.append(el("tr", {class: "more"},
       el("td", {colspan: 5}, r.text || "", r.where ? el("div", {}, "Where: " + r.where) : null)));
@@ -636,7 +644,7 @@ async function loadRoadmap() {
   try {
     roadmapData = await api("roadmap");
     fillSelect("taskMs", MS.map(m => m[0]), k => MS.find(m => m[0] === k)[1]);
-    fillSelect("taskTeam", [...new Set(roadmapData.rows.map(r => r.team).filter(Boolean))].sort());
+    fillSelect("taskTeam", [...new Set(roadmapData.rows.map(teamOf).filter(Boolean))].sort());
     fillSelect("taskSec", [...new Set(roadmapData.rows.map(r => r.section).filter(Boolean))].sort());
     renderRoadmap();
   } catch (e) { document.getElementById("milestones").replaceChildren(el("p", {class: "bad"}, e.message)); }
@@ -644,7 +652,8 @@ async function loadRoadmap() {
   renderTeams();
 }
 for (const id of ["taskQ", "taskMs", "taskTeam", "taskSec", "taskState"])
-  document.getElementById(id).addEventListener(id === "taskQ" ? "input" : "change", renderRoadmap);
+  document.getElementById(id).addEventListener(id === "taskQ" ? "input" : "change",
+    () => { renderRoadmap.ownerOnly = false; renderRoadmap(); });
 
 // -------------------------------------------------------------------------------- tabs
 function currentTab() {
