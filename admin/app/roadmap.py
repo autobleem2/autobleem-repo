@@ -8,8 +8,8 @@ row dicts `{id, section, title, text, where, size, who, ms, team, done, done_dat
 """
 import re
 
-_SECTION_RE = re.compile(r"^##\s+([A-Z])\b")
-_ROW_ID_RE = re.compile(r"^[A-Z]\d+$")
+_SECTION_RE = re.compile(r"^##\s+([A-Z]+)\b")
+_ROW_ID_RE = re.compile(r"^[A-Z]+-?\d+$")
 _BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.S)
 _DONE_RE = re.compile(r"^~~(?P<inner>.*?)~~\s*\*\*done\s+(?P<date>[\d-]+)\*\*", re.S)
 _TEAM_RE = re.compile(r"Team:\s*([^,.()]+)")
@@ -63,8 +63,9 @@ def _title_and_done(what):
 
 def parse_todo(markdown_text):
     """`docs/todo.md` -> a list of row dicts `{id, section, title, text, where, size, who, ms, team, done,
-    done_date, done_by}`, in file order. A row is `| ID | ... |` (`ID` = a letter + digits) under the
-    nearest `## X - ...` heading; non-row lines (headings, the column header, the `|---|` separator,
+    done_date, done_by}`, in file order. A row is `| ID | ... |` (`ID` = an area word, a dash and digits,
+    `RELEASE-1`, since 2026-09-27; the old letter + digits, `R1`, still parses) under the nearest
+    `## RELEASE - ...` heading, whose word is the row's `section`; non-row lines (headings, the column header, the `|---|` separator,
     prose) are skipped."""
     rows = []
     section = None
