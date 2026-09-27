@@ -543,6 +543,11 @@ function msKey(v) {
   const m = MS.find(([k, n]) => v === k || v.startsWith(n) || (k === "later" && v.startsWith("2.1")));
   return m ? m[0] : v;
 }
+function msKeys(v) {
+  const parts = (v || "").split(/[/,;\s]+/).map(p => p.trim()).filter(Boolean);
+  const keys = parts.map(msKey).filter(k => k && k !== "any");
+  return [...new Set(keys)];
+}
 function teamOf(r) { return (r.team || "").split(/[(,;]/)[0].trim(); }
 function ago(iso) {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -593,7 +598,7 @@ function renderMilestones(d) {
   const chosen = document.getElementById("taskMs").value;
   let firstOpen = null;
   for (const [key, name] of MS) {
-    const rows = d.rows.filter(r => msKey(r.ms) === key);
+    const rows = d.rows.filter(r => msKeys(r.ms).includes(key));
     if (!rows.length && !byKey[key]) continue;
     const done = rows.filter(r => r.done).length, open = rows.length - done;
     if (firstOpen === null && open) firstOpen = key;
@@ -615,7 +620,7 @@ function renderTasks(d) {
   const q = document.getElementById("taskQ").value.trim().toLowerCase(), ms = document.getElementById("taskMs").value;
   const team = document.getElementById("taskTeam").value, sec = document.getElementById("taskSec").value;
   const state = document.getElementById("taskState").value;
-  const rows = d.rows.filter(r => (!ms || msKey(r.ms) === ms) && (!team || teamOf(r) === team) &&
+  const rows = d.rows.filter(r => (!ms || msKeys(r.ms).includes(ms)) && (!team || teamOf(r) === team) &&
     (!sec || r.section === sec) && (!state || (state === "done") === !!r.done) &&
     (!renderRoadmap.ownerOnly || (r.who || "").toLowerCase().includes("owner")) &&
     (!q || (r.id + " " + r.title + " " + (r.text || "")).toLowerCase().includes(q)));
