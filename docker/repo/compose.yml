@@ -32,6 +32,7 @@ services:
       - ${REPO_DIR:-/home/claude/autobleem-repo}:/srv/repo:ro
       - caddy_data:/data
       - caddy_config:/config
+      - ${PRIVATE_CADDY_DIR:-/home/claude/foundry-caddy}:/etc/caddy/private:ro
 
   # the panel's service: the JSON API and the page (admin/)
   admin:
