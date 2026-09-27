@@ -85,6 +85,15 @@ label{white-space:nowrap;margin-right:.8rem}
 .card .head h3{margin:0}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:0 1.2rem}
 @media (max-width:44rem){.cols{grid-template-columns:1fr}}
+/* R27 - the roadmap tab */
+.needs{margin:0;padding-left:1.1rem}.needs li{margin:.25rem 0}.needs .kind{font-size:.75rem;color:var(--pre);margin-right:.4rem}
+.ms{cursor:pointer}.ms.sel{border-color:var(--cyan)}.ms .gate{color:var(--dim);font-size:.88rem;margin:.2rem 0 .3rem}
+.ms .teams{font-size:.82rem;color:var(--dim)}
+.badge{display:inline-block;font-size:.72rem;padding:0 .45rem;border-radius:999px;border:1px solid var(--line);
+  color:var(--dim);white-space:nowrap}
+.state-working{color:var(--rel)}.state-waiting{color:var(--pre)}.state-asleep,.state-unknown{color:var(--dim)}
+tr.task{cursor:pointer}tr.task.done td{opacity:.55}tr.task.done .ttl{text-decoration:line-through}
+tr.more td{font-size:.86rem;color:var(--dim);white-space:normal}
 .actonly{display:none}
 body.can-act .actonly{display:block}
 body.can-act button.actonly{display:inline-block}
@@ -99,6 +108,7 @@ body.can-act button.actonly{display:inline-block}
     <a href="/oauth2/sign_out?rd=/">Sign out</a></nav>
 </div>
 <nav class="tabs" id="tabs">
+  <a href="#roadmap" data-tab="roadmap">Roadmap</a>
   <a href="#builds" data-tab="builds">Builds</a>
   <a href="#releases" data-tab="releases">Releases</a>
   <a href="#store" data-tab="store">Store</a>
@@ -109,6 +119,36 @@ body.can-act button.actonly{display:inline-block}
 <main>
   <div id="error" class="notice bad" hidden></div>
   <div id="diskwarn" class="notice bad" hidden></div>
+
+  <section id="tab-roadmap" class="tab-content">
+    <section class="panel">
+      <h2>Needs you</h2>
+      <ul class="needs" id="needs"><li class="dim">Loading...</li></ul>
+    </section>
+    <section class="panel">
+      <h2>Milestones <small>click one to filter the tasks</small></h2>
+      <div id="milestones"><p class="dim">Loading...</p></div>
+    </section>
+    <section class="panel">
+      <h2>Teams now <small id="teamsAge"></small></h2>
+      <div class="scroll"><table><tbody id="teams"></tbody></table></div>
+      <p class="dim" id="usage"></p>
+    </section>
+    <section class="panel">
+      <h2>Tasks <small id="taskCount"></small></h2>
+      <div class="row">
+        <input type="text" id="taskQ" placeholder="search" size="18">
+        <select id="taskMs"><option value="">every milestone</option></select>
+        <select id="taskTeam"><option value="">every team</option></select>
+        <select id="taskSec"><option value="">every section</option></select>
+        <select id="taskState"><option value="open">open</option><option value="done">done</option><option value="">all</option></select>
+      </div>
+      <div class="scroll"><table>
+        <thead><tr><th>ID</th><th>Task</th><th>Milestone</th><th>Team</th><th>Size</th></tr></thead>
+        <tbody id="tasks"></tbody>
+      </table></div>
+    </section>
+  </section>
 
   <section id="tab-builds" class="tab-content">
     <h2>Now building <small id="at"></small></h2>
@@ -233,7 +273,7 @@ body.can-act button.actonly{display:inline-block}
 const API = "/admin/api/";let canAct = false, firstStatus = true;
 const seenActive = new Set();
 const selectedJob = {}; // run id -> job name selected in that card
-const TABS = ["builds", "releases", "store", "server", "audit"];
+const TABS = ["roadmap", "builds", "releases", "store", "server", "audit"];
 
 function el(tag, attrs, ...kids) {
   const e = document.createElement(tag);
@@ -495,6 +535,131 @@ async function loadStore() {
   catch (e) { document.getElementById("storePlatforms").replaceChildren(el("p", {class: "bad"}, e.message)); }
 }
 
+// -------------------------------------------------------------------------------- Roadmap tab (R27)
+const MS = [["a2", "alpha2"], ["a3", "alpha3"], ["a4", "alpha4"], ["b1", "beta1"], ["rc", "rc"], ["later", "later"]];
+let roadmapData = null, teamsData = null, openRow = null;
+function msKey(v) {
+  v = (v || "").toLowerCase().replace(/\*/g, "").trim();
+  const m = MS.find(([k, n]) => v === k || v.startsWith(n) || (k === "later" && v.startsWith("2.1")));
+  return m ? m[0] : v;
+}
+function msKeys(v) {
+  const parts = (v || "").split(/[/,;\s]+/).map(p => p.trim()).filter(Boolean);
+  const keys = parts.map(msKey).filter(k => k && k !== "any");
+  return [...new Set(keys)];
+}
+function teamOf(r) { return (r.team || "").split(/[(,;]/)[0].trim(); }
+function ago(iso) {
+  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.round(m / 60) + " h ago";
+}
+function renderTeams() {
+  const t = teamsData || {}, st = t.status, tb = document.getElementById("teams"), needs = document.getElementById("needs");
+  tb.replaceChildren(); needs.replaceChildren();
+  if (st) {
+    const stale = Date.now() - new Date(st.written_at).getTime() > 3600e3;
+    document.getElementById("teamsAge").textContent = st.written_at ? "written " + ago(st.written_at) + " by " + st.written_by : "";
+    tb.style.opacity = stale ? .5 : 1;
+    for (const m of st.teams) tb.append(el("tr", {},
+      el("td", {}, m.name, el("small", {}, m.team)),
+      el("td", {class: "state-" + m.state}, m.state),
+      el("td", {}, m.items.map(i => el("div", {}, el("code", {}, i.id), " ", i.what)), m.note ? el("small", {}, m.note) : null)));
+    const u = st.usage || {};
+    document.getElementById("usage").textContent = u.five_hour_percent !== undefined
+      ? "Usage: 5-hour " + u.five_hour_percent + "%" +
+        (u.five_hour_resets_at ? " (resets " + new Date(u.five_hour_resets_at).toLocaleTimeString() + ")" : "") +
+        " · weekly " + u.weekly_percent + "%" + (u.weekly_cap_today_percent ? " of today's " + u.weekly_cap_today_percent + "%" : "") : "";
+    for (const n of st.needs_owner)
+      needs.append(el("li", {}, el("span", {class: "kind"}, n.kind), el("code", {}, n.id), " ", n.what));
+  } else {
+    tb.append(el("tr", {}, el("td", {class: "dim"}, "No status yet" + (t.reason ? " (" + t.reason + ")" : "") + ".")));
+  }
+  const listed = new Set(st ? st.needs_owner.map(n => n.id) : []);
+  const mine = roadmapData ? roadmapData.rows.filter(r => !r.done && (r.who || "").toLowerCase().includes("owner") &&
+                                                      !listed.has(r.id)) : [];
+  for (const r of mine.slice(0, 5))
+    needs.append(el("li", {}, el("span", {class: "kind"}, "todo"), el("code", {}, r.id), " ", r.title));
+  if (mine.length > 5) needs.append(el("li", {class: "dim"}, "and " + (mine.length - 5) + " more todo rows for you - ",
+    el("button", {type: "button", class: "link", onclick: () => {
+      document.getElementById("taskQ").value = ""; document.getElementById("taskState").value = "open";
+      document.getElementById("taskMs").value = ""; renderRoadmap.ownerOnly = true; renderRoadmap();
+      document.getElementById("tasks").scrollIntoView({behavior: "smooth"}); }}, "show them")));
+  if (!needs.children.length) needs.append(el("li", {class: "dim"}, "Nothing is waiting for you."));
+}
+function fillSelect(id, values, label) {
+  const s = document.getElementById(id), keep = s.value;
+  while (s.options.length > 1) s.remove(1);
+  for (const v of values) s.append(el("option", {value: v}, label ? label(v) : v));
+  s.value = values.includes(keep) ? keep : "";
+}
+function renderMilestones(d) {
+  const box = document.getElementById("milestones"); box.replaceChildren();
+  const byKey = {}; for (const m of d.milestones || []) byKey[msKey(m.name || m.id)] = m;
+  const chosen = document.getElementById("taskMs").value;
+  let firstOpen = null;
+  for (const [key, name] of MS) {
+    const rows = d.rows.filter(r => msKeys(r.ms).includes(key));
+    if (!rows.length && !byKey[key]) continue;
+    const done = rows.filter(r => r.done).length, open = rows.length - done;
+    if (firstOpen === null && open) firstOpen = key;
+    const teams = {};
+    rows.filter(r => !r.done).forEach(r => { const t = teamOf(r) || "no team"; teams[t] = (teams[t] || 0) + 1; });
+    const m = byKey[key] || {}, sel = chosen === key, expanded = sel || key === firstOpen;
+    box.append(el("div", {class: "card ms" + (sel ? " sel" : ""), onclick: () => {
+        document.getElementById("taskMs").value = sel ? "" : key; renderRoadmap(); }},
+      el("div", {class: "head"}, el("h3", {}, m.name || name, m.theme ? el("span", {class: "dim"}, " · " + m.theme) : null),
+        el("span", {class: "dim"}, open + " open · " + done + " done")),
+      el("div", {class: "progress"}, el("i", {style: "width:" + (rows.length ? Math.round(100 * done / rows.length) : 0) + "%"})),
+      expanded && m.gate ? el("div", {class: "gate"}, "Gate: " + m.gate) : null,
+      expanded && open ? el("div", {class: "teams"}, "Open by team: " +
+        Object.entries(teams).map(([t, n]) => t + " " + n).join(" · ")) : null));
+  }
+  if (!box.children.length) box.append(el("p", {class: "dim"}, "No milestones found."));
+}
+function renderTasks(d) {
+  const q = document.getElementById("taskQ").value.trim().toLowerCase(), ms = document.getElementById("taskMs").value;
+  const team = document.getElementById("taskTeam").value, sec = document.getElementById("taskSec").value;
+  const state = document.getElementById("taskState").value;
+  const rows = d.rows.filter(r => (!ms || msKeys(r.ms).includes(ms)) && (!team || teamOf(r) === team) &&
+    (!sec || r.section === sec) && (!state || (state === "done") === !!r.done) &&
+    (!renderRoadmap.ownerOnly || (r.who || "").toLowerCase().includes("owner")) &&
+    (!q || (r.id + " " + r.title + " " + (r.text || "")).toLowerCase().includes(q)));
+  document.getElementById("taskCount").textContent = rows.length + " of " + d.rows.length;
+  const tb = document.getElementById("tasks"); tb.replaceChildren();
+  if (!rows.length) tb.append(el("tr", {}, el("td", {colspan: 5, class: "dim"}, "No task matches.")));
+  for (const r of rows) {
+    tb.append(el("tr", {class: "task" + (r.done ? " done" : ""),
+        onclick: () => { openRow = openRow === r.id ? null : r.id; renderTasks(d); }},
+      el("td", {}, el("code", {}, r.id)),
+      el("td", {}, el("span", {class: "ttl"}, r.title),
+        r.done ? el("small", {}, "done " + (r.done_date || "") + (r.done_by ? " · " + r.done_by : "")) : null),
+      el("td", {}, r.ms ? el("span", {class: "badge"}, r.ms) : null),
+      el("td", {}, teamOf(r) ? el("span", {class: "badge"}, teamOf(r)) : null),
+      el("td", {class: "num"}, r.size || "")));
+    if (openRow === r.id) tb.append(el("tr", {class: "more"},
+      el("td", {colspan: 5}, r.text || "", r.where ? el("div", {}, "Where: " + r.where) : null)));
+  }
+}
+function renderRoadmap() {
+  if (!roadmapData) return;
+  renderMilestones(roadmapData); renderTasks(roadmapData);
+}
+async function loadRoadmap() {
+  loadRoadmap.loaded = true;
+  try {
+    roadmapData = await api("roadmap");
+    fillSelect("taskMs", MS.map(m => m[0]), k => MS.find(m => m[0] === k)[1]);
+    fillSelect("taskTeam", [...new Set(roadmapData.rows.map(teamOf).filter(Boolean))].sort());
+    fillSelect("taskSec", [...new Set(roadmapData.rows.map(r => r.section).filter(Boolean))].sort());
+    renderRoadmap();
+  } catch (e) { document.getElementById("milestones").replaceChildren(el("p", {class: "bad"}, e.message)); }
+  try { teamsData = await api("teams"); } catch (e) { teamsData = {status: null, reason: e.message}; }
+  renderTeams();
+}
+for (const id of ["taskQ", "taskMs", "taskTeam", "taskSec", "taskState"])
+  document.getElementById(id).addEventListener(id === "taskQ" ? "input" : "change",
+    () => { renderRoadmap.ownerOnly = false; renderRoadmap(); });
+
 // -------------------------------------------------------------------------------- tabs
 function currentTab() {
   const h = (location.hash || "").replace("#", "");
@@ -508,6 +673,7 @@ function showTab(name) {
   }
   try { localStorage.setItem("ab-admin-tab", name); } catch (e) { /* private browsing etc */ }
   if (name === "store" && !renderStore.loaded) loadStore();
+  if (name === "roadmap" && !loadRoadmap.loaded) loadRoadmap();
 }
 function initTabs() {
   let name = currentTab();
@@ -554,6 +720,7 @@ async function start() {
   if (canAct) preview();
   refresh(); loadSlow(); loadAudit();
   setInterval(loadSlow, 60000); setInterval(loadAudit, 60000);
+  setInterval(() => { if (loadRoadmap.loaded) loadRoadmap(); }, 60000);
 }
 start().catch(e => toast(e.message, true));
 </script>
