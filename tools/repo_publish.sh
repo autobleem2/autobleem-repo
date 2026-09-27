@@ -51,7 +51,10 @@
 #   tools/repo_publish.sh mirror opentyrian tyrian21.zip                       -> mirror/opentyrian/ (third-party files a
 #                                                                                 build fetches - an App's freeware game
 #                                                                                 data - kept as they are, never indexed)
-#   tools/repo_publish.sh assets                                               -> assets/ (tools/repo_assets.py)
+#   tools/repo_publish.sh assets [theme-dir]                                   -> assets/ (tools/repo_assets.py;
+#                                                                                 theme-dir defaults to $AB_AB2_THEME_DIR -
+#                                                                                 a checkout of autobleem-themes' Themes/ab2,
+#                                                                                 this repo has none of its own)
 #   tools/repo_publish.sh index                                                just regenerate the index
 #   tools/repo_publish.sh withdraw <kind> <version> [--dry-run] [--local]      removes a published version's
 #                                                                                 folder (release/nightly/image/
@@ -246,7 +249,11 @@ STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE" "$STAGE.assets"' EXIT
 
 if [ "$KIND" = assets ]; then
-    python3 "$HERE/repo_assets.py" "$STAGE.assets"
+    # repo_assets.py needs the ab2 theme's own directory - this repo carries none of it (no
+    # autobleem-themes submodule here). Pass it as $2 (e.g. ../autobleem-themes/Themes/ab2, a sibling
+    # checkout, the same convention as the pcsx kind's ../pcsx-abnxt/... path) or set AB_AB2_THEME_DIR;
+    # repo_assets.py's own docstring has the details.
+    python3 "$HERE/repo_assets.py" "$STAGE.assets" ${2:+"$2"}
     set -- "$STAGE.assets"/*
 fi
 
