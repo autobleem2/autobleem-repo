@@ -117,6 +117,16 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
         except GitHubError as e:
             raise HTTPException(502, str(e))
 
+    @app.get("/admin/api/howto/{name}")
+    def get_howto(name: str, who=Depends(viewer)):
+        try:
+            html = source.howto(name)
+        except GitHubError as e:
+            raise HTTPException(502, str(e))
+        if html is None:
+            raise HTTPException(404, "no such how-to page")
+        return {"html": html}
+
     @app.get("/admin/api/teams")
     def get_teams(who=Depends(viewer)):
         try:

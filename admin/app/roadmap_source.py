@@ -4,12 +4,16 @@ of it - the Program Manager writes status.json, the teams keep todo.md.
 """
 import base64
 import json
+import re
 
 from .github import GitHubError
 
 MAIN_REPO = "autobleem-main"
 BRANCH = "develop"
 TTL = 60
+# a how-to page for something the owner does himself (decisions.md, "Owner tasks come with a how-to"):
+# autobleem-main/howto/<name>.html, named in status.json as "howto/<name>.html"
+HOWTO = re.compile(r"^howto/([a-z0-9][a-z0-9-]{0,63})\.html$")
 
 
 class RoadmapSource:
@@ -45,9 +49,14 @@ class RoadmapSource:
             "written_by": data.get("written_by", ""),
             "usage": data.get("usage") or {},
             "teams": [_team(t) for t in data.get("teams") or [] if isinstance(t, dict)],
-            "needs_owner": [_item(i, ("id", "kind", "what")) for i in data.get("needs_owner") or []
-                            if isinstance(i, dict)],
+            "needs_owner": [_need(i) for i in data.get("needs_owner") or [] if isinstance(i, dict)],
         }}
+
+    def howto(self, name):
+        """The how-to page `howto/<name>.html` as HTML text, or None (a bad name or no such page)."""
+        if not HOWTO.match("howto/%s.html" % name):
+            return None
+        return self.text("howto/%s.html" % name)
 
     def roadmap(self):
         """The parsed todo.md rows and roadmap.md milestones (the parser is app/roadmap.py, step 1)."""
@@ -58,6 +67,12 @@ class RoadmapSource:
 
 def _item(d, keys):
     return {k: str(d.get(k, "")) for k in keys}
+
+
+def _need(d):
+    """An owner-queue entry; `howto` is the page's name (what /admin/api/howto/<name> serves) or ""."""
+    m = HOWTO.match(str(d.get("howto", "")))
+    return dict(_item(d, ("id", "kind", "what")), howto=m.group(1) if m else "")
 
 
 def _team(t):
