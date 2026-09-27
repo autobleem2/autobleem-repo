@@ -47,6 +47,27 @@ set by the launcher's `docs/store-plan.md`.
   the Linux setup guide folded under Build inputs; LAN Share (pc-tools' Windows app, `extensions/lanshare/`,
   `lanshare-windows-x86_64-<v>.zip`) is listed there too. Tested in `tests/test_extension_index.py`.
 
+## The PS1 emulators' channels (2026-09-27, RELEASE-4)
+
+`emu/<name>/` (`pcsx-ab`, `pcsx-abnxt`) has three channels now, like every other tab: a v* tag build under
+`emu/<name>/<version>/` is **release** (a plain tag) or **testing** (a pre-release tag - `is_prerelease`), a
+develop push is **nightly**, published to `emu/<name>/nightly/<version>/`. `index_pcsx` (`pcsx_channel_of`
+tells a version's channel apart) keeps the newest build of each channel and prunes an older one of the same
+channel - an older nightly goes the way an older extension development build does; the function and
+`repo_index.py`'s nightly/ reading are generic over `name`, so either emulator can have a nightly channel.
+`emu/<name>/latest.json` keeps its old top-level shape (`"version"`/`"files"`/...) unchanged -
+`make_win_package.sh` (autobleem2/autobleem) and autobleem-appliance both still
+`json.load(...)["files"]["win64"]["url"]` it that way to build the Windows product - as the newest **tag**
+build (release, else testing; a nightly-only tree falls back to the nightly rather than leave the top level
+missing, but a nightly is never the top level while a tag build exists); the channels themselves sit beside
+it under `"channels"`, keyed release/testing/nightly, which is what the download page's PS1 emulators tab
+(and `index_pcsx`'s return value) reads. `repo_publish.sh pcsx`/`pcsx-ab` still publish a v* tag build; the
+new `pcsx-nightly` kind (and its `withdraw` counterpart) publishes a pcsx-abnxt develop push - **pcsx-ab is no
+longer developed (the owner's decision), so it has no nightly kind and its CI publishes tag releases only**;
+`pcsx-ab`'s existing release still indexes and pills the same way, and would pick up a nightly channel from
+`emu/pcsx-ab/nightly/` too if one were ever published there by hand. The PS1 emulators tab on the download
+page draws the same three pills (`rel`/`pre`/`dev`) as every other tab. Tested in `tests/test_pcsx_index.py`.
+
 ## The pages' look and structure - the rules (the owner's, 2026-09-23)
 
 The owner approved the 2026-09-23 redesign ("look and feel of the page is great"). **Keep it; change it only

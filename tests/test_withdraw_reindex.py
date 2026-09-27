@@ -117,8 +117,11 @@ def test_index_pcsx_drops_the_stale_latest_json_once_the_sole_build_is_withdrawn
     root = os.path.join(repo, "emu", "pcsx-ab")
     touch(os.path.join(root, "20260921-bbbbbbb", "pcsx-ab-20260921-bbbbbbb-psc.tar.gz"))
 
+    # a dated version (no "v" prefix) is the nightly channel (pcsx_channel_of) - true since before the
+    # nightly/ subdirectory existed, when a manual publish put a develop-push build directly here
     builds = repo_index.index_pcsx(repo, BASE_URL, name="pcsx-ab")
-    assert set(builds) == {"20260921-bbbbbbb"}
+    assert set(builds) == {"nightly"}
+    assert builds["nightly"]["version"] == "20260921-bbbbbbb"
     assert os.path.isfile(os.path.join(root, "latest.json"))
 
     # `repo_publish.sh withdraw pcsx-ab 20260921-bbbbbbb` removes the folder; before this fix, a stale
