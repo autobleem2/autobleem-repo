@@ -119,6 +119,14 @@ def test_parse_todo_ignores_non_row_lines():
     assert [r["id"] for r in rows] == ["R1"]
 
 
+def test_parse_todo_area_word_ids():
+    text = ("## RELEASE - Release and process\n\n| ID | What | Where | Size | Who | Ms |\n|---|---|---|---|---|---|\n"
+            "| RELEASE-1 | x | y | S | dev | a2 |\n\n## HWTEST - Hardware proofs\n\n"
+            "| ID | What | Where | Size | Who | Ms |\n|---|---|---|---|---|---|\n| HWTEST-12 | z | y | S | tester | a3 |\n")
+    rows = parse_todo(text)
+    assert [(r["id"], r["section"]) for r in rows] == [("RELEASE-1", "RELEASE"), ("HWTEST-12", "HWTEST")]
+
+
 # ------------------------------------------------------------------ parse_milestones / milestone_code
 
 
