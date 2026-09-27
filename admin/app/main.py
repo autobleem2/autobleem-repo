@@ -17,6 +17,7 @@ from .actions import Actions, Audit
 from .config import settings as default_settings
 from .github import GitHub, GitHubError
 from .notify import Notifier
+from .roadmap_source import RoadmapSource
 from .runs import Runs
 from .site import Health, channels, store_catalog
 
@@ -49,6 +50,7 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
     gh = gh or GitHub(settings)
     runs, health, actions = Runs(gh, settings), Health(gh, settings), Actions(gh, settings)
     audit = Audit(settings.data_dir)
+    source = RoadmapSource(gh, settings)
     app = FastAPI(title="AutoBleem admin", docs_url=None, redoc_url=None, openapi_url="/admin/api/openapi.json")
 
     def viewer(request: Request):
@@ -107,6 +109,20 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
     @app.get("/admin/api/audit")
     def get_audit(who=Depends(viewer)):
         return audit.recent()
+
+    @app.get("/admin/api/roadmap")
+    def get_roadmap(who=Depends(viewer)):
+        try:
+            return source.roadmap()
+        except GitHubError as e:
+            raise HTTPException(502, str(e))
+
+    @app.get("/admin/api/teams")
+    def get_teams(who=Depends(viewer)):
+        try:
+            return source.teams()
+        except GitHubError as e:
+            raise HTTPException(502, str(e))
 
     @app.get("/admin/api/promote/preview")
     def preview(kind: str, version: str = "", who=Depends(viewer)):
