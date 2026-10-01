@@ -3,8 +3,22 @@
 `https://autobleem.retromenele.pl/` is the build server's `/home/claude/autobleem-repo`, served read-only by
 Caddy (`docker/repo/`). Everything on it is published by `tools/repo_publish.sh <kind> ...`; the three pages
 (`index.html`, `rpi-install.html`, `pc-install.html`) are **generated** by `tools/repo_index.py` on every
-publish - never edited on the server. `tools/repo_assets.py` stages `assets/` (the ab2 theme's picture,
-Selawik Light, the emblem).
+publish - never edited on the server. `tools/repo_assets.py` stages `assets/` from `tools/site-assets/` (the
+ab2.0.0 background, the C3 logo, the emblem, the icon, the Support button, Red Hat Text with its OFL.txt -
+autobleem-design's `www/` makes them).
+
+## The site's addresses (2026-10-01)
+
+`/` is the **splash** (`render_splash()`: `SPLASH_STATUS` is the "Where we are" block the owner edits, the
+nightly row comes from `index_nightly`, `KOFI_URL` is the Support button - empty = no button). The download
+listing and the two manuals live in **`/repository/`** (`index.html`, `rpi-install.html`, `pc-install.html`);
+the old `/rpi-install.html` and `/pc-install.html` are small refresh + link stubs (`render_moved`). The store page
+stays at `/store/`. The **data paths do not move** (`releases/`, `nightly/`, `store/`, `extensions/`, `emu/`,
+`pc/`, `psc/`, `rpi/`, `db/`, `manuals/`, `mirror/`, `rpi-imager/`, `samples/`): every updater, installer and
+the Store read JSON there. The brand goes to `/`; "Downloads", "Manual" and "<- Downloads" go to `/repository/`.
+Caddy's `@volatile` (max-age=300) lists `/`, `/index.html`, `/repository/` and `/repository/index.html`.
+**Order of a publish that changes the look:** `repo_publish.sh assets` first (the pages' CSS needs the new fonts
+and logos), then the page.
 
 ## Publishing
 
@@ -73,11 +87,11 @@ page draws the same three pills (`rel`/`pre`/`dev`) as every other tab. Tested i
 The owner approved the 2026-09-23 redesign ("look and feel of the page is great"). **Keep it; change it only
 when asked.** New content fits into the existing pieces, it does not bring its own.
 
-- **The top.** Every page starts with `page_head(title, tagline)`: the slim sticky bar (emblem, "AutoBleem 2
-  Downloads", Manual / All files / GitHub) and the short banner - one line of text on the left, the ab2
-  picture whole on the right (hidden on a phone). Never a full-width hero again, never a second header.
-- **The palette and type** are `PAGE_CSS`'s `:root` tokens (navy, cyan, ink, dim; rel/pre/dev/warn) and
-  Selawik Light. No colours or fonts outside them.
+- **The top.** Every inner page starts with `page_head(title, tagline)`: the slim sticky bar (emblem, "AutoBleem 2
+  Downloads", Store / Manual / All files / GitHub) and the short banner - one line of text on the left, the C3
+  logo on the right (hidden on a phone). Never a full-width hero again, never a second header.
+- **The palette and type** are `PAGE_CSS`'s `:root` tokens (graphite, cyan, magenta, ink, dim; rel/pre/dev/warn)
+  and Red Hat Text. No colours or fonts outside them.
 - **The landing page** is: one short lede, then the platform tabs (PlayStation Classic, Raspberry Pi, PC with
   its two sub-tabs, Every platform). A platform's tab is an **Install** panel first - what a user installs
   from - and then its **Build inputs** folded in a `<details class="inputs">` (what installers, image builds

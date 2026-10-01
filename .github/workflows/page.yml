@@ -39,6 +39,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/site"
           python3 tools/repo_index.py "$RUNNER_TEMP/site"
           test -s "$RUNNER_TEMP/site/index.html"
+          test -s "$RUNNER_TEMP/site/repository/index.html"
 
   publish:
     needs: check

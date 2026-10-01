@@ -32,9 +32,12 @@ Reads what is there (CLAUDE.md, "The download repository", has the layout) and w
                                        the classic pcsx-ab and the next one
     rpi-imager/os_list.json            the newest images' Imager metadata with real urls (from the
                                        rpi_imager_repo.json make_rpi_image.sh wrote next to them)
-    index.html                         the landing page
-    rpi-install.html                   the Raspberry Pi manual: which image for which Pi, the setup, games
-    pc-install.html                    the PC USB stick's manual: what it runs on, writing the stick, the setup
+    index.html                         the splash page ("AutoBleem 2 is coming", SPLASH_STATUS, the Ko-fi button)
+    repository/index.html              the download listing (was the landing page)
+    repository/rpi-install.html        the Raspberry Pi manual: which image for which Pi, the setup, games
+    repository/pc-install.html         the PC USB stick's manual: what it runs on, writing the stick, the setup
+    rpi-install.html, pc-install.html  stubs that send an old link on to repository/
+    store/index.html                   what the AutoBleem Store offers
 
 Every file's sha256 comes from its `<name>.sha256` sidecar (sha256sum format) when there is one, else it
 is computed and the sidecar written.
@@ -56,7 +59,17 @@ import sys
 from datetime import datetime, timezone
 
 # bump on every change: tools/repo_publish.sh only replaces the copy the repository runs with a newer one
-INDEX_VERSION = 44
+INDEX_VERSION = 45
+
+# the splash page's "Where we are" block (the owner edits it): (label, small note, pill class, pill text).
+# A row with an empty pill class is not reached yet and gets the amber ring instead of the green dot. The
+# nightly row is added under these by render_splash from index_nightly's newest build.
+SPLASH_STATUS = [
+    ("First preview tagged", "the first build with a version number", "pre", "v2.0.0-alpha0"),
+    ("Next milestone", "in progress", "", "alpha1"),
+]
+# the owner's Ko-fi page: the splash's Support button links it; empty = no button
+KOFI_URL = "https://ko-fi.com/autobleem"
 
 # the release packages, by the name they carry (tools/make_*_package.sh, ci/build.sh)
 PACKAGE_KINDS = [
@@ -1217,132 +1230,216 @@ def index_nightly(repo, base_url):
 #*******************************
 # the landing page
 #*******************************
-# Styled after the ab2 theme: its background (the logo is painted into it) as the hero, its navy/cyan
-# palette, its Selawik Light font - all under /assets, staged by tools/repo_assets.py.
+# The ab2.0.0 look (graphite, cyan lines, magenta for the selected thing, cut corners, Red Hat Text), designed in
+# autobleem-design www/ - everything under /assets, staged by tools/repo_assets.py.
 PAGE_CSS = """
-@font-face{font-family:Selawik;src:url(/assets/selawik-light.ttf) format('truetype');font-weight:300;font-display:swap}
-:root{--navy:#061a3a;--panel:rgba(4,22,56,.82);--line:rgba(80,200,255,.28);--cyan:#4fc8ff;--ink:#e8f2ff;--dim:#9fb8d6;
-  --rel:#58e0a0;--pre:#ffc857;--dev:#c79bff;--warn:#ff8a65}
+/* AutoBleem 2 download site - the ab2.0.0 look (graphite, cyan lines, magenta focus, cut corners, Red Hat Text).
+   A drop-in for repo_index.py's PAGE_CSS: every class the generator writes keeps its name; new ones are marked NEW.
+   Cut corners: clip-path on the box, the 1 px line drawn by its ::before (the same polygon, 1 px larger) -
+   see www/README.md "Cut corners". Corners cut: top-right and bottom-left, like the theme's tiles. */
+@font-face{font-family:"Red Hat Text";src:url(/assets/RedHatText-Medium.ttf) format('truetype');font-weight:500;font-display:swap}
+@font-face{font-family:"Red Hat Text";src:url(/assets/RedHatText-SemiBold.ttf) format('truetype');font-weight:600;font-display:swap}
+:root{
+  --bg:#12161c;--panel:#262e38;--panel-top:#2e3742;--panel-bot:#212831;--panel-glass:rgba(33,40,49,.88);
+  --cyan:#36d9e0;--line:rgba(54,217,224,.34);--line-soft:rgba(54,217,224,.14);--magenta:#ff46aa;
+  --ink:#e8eef4;--dim:#9aa8b6;--steel:#aab8c6;
+  --rel:#58e0a0;--pre:#ffc857;--dev:#b9a0ff;--warn:#ff8a65;
+  --cut:12px;--cut-s:7px}
 *{box-sizing:border-box}
-html{scroll-padding-top:4rem}
-body{margin:0;font-family:Selawik,"Segoe UI",system-ui,sans-serif;font-weight:300;color:var(--ink);line-height:1.5;
-  background:var(--navy) radial-gradient(ellipse at 50% 0,#0b3a7a 0,#071f47 45%,#040f26 100%) fixed}
+html{scroll-padding-top:4.2rem}
+body{margin:0;font-family:"Red Hat Text","Segoe UI",system-ui,sans-serif;font-weight:500;color:var(--ink);line-height:1.5;
+  background:var(--bg) url(/assets/background.jpg) center top/cover fixed}
+body:before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:linear-gradient(180deg,rgba(18,22,28,.55) 0,rgba(18,22,28,.82) 60%,rgba(18,22,28,.92) 100%)}
 a{color:var(--cyan);text-decoration:none}a:hover{color:#fff;text-decoration:underline}
-header.top{position:sticky;top:0;z-index:5;background:rgba(4,15,38,.92);backdrop-filter:blur(6px);
+
+/* the cut-corner box: .cut on any block (panels, notices, buttons) */
+.cut,.panel,.notice,details.inputs,.status,a.big,.hero .in:before{
+  clip-path:polygon(0 0,calc(100% - var(--cut)) 0,100% var(--cut),100% 100%,var(--cut) 100%,0 calc(100% - var(--cut)))}
+
+/* the top bar */
+header.top{position:sticky;top:0;z-index:5;background:rgba(18,22,28,.9);backdrop-filter:blur(8px);
   border-bottom:1px solid var(--line)}
-header.top .bar{max-width:68rem;margin:0 auto;padding:.55rem 1rem;display:flex;align-items:center;gap:1rem}
-header.top .brand{display:flex;align-items:center;gap:.6rem;color:#fff;font-size:1.15rem;letter-spacing:.04em}
-header.top .brand img{width:30px;height:30px}
-header.top .brand span{color:var(--dim);font-size:.95rem}
+header.top:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;
+  background:linear-gradient(90deg,var(--magenta) 0 56px,transparent 56px 64px,var(--cyan) 64px,rgba(54,217,224,.2) 75%,transparent)}
+header.top .bar{max-width:68rem;margin:0 auto;padding:.5rem 1rem;display:flex;align-items:center;gap:1rem}
+header.top .brand{display:flex;align-items:center;gap:.6rem;color:#fff;font-size:1.1rem;font-weight:600;letter-spacing:.06em}
+header.top .brand img{height:32px;width:auto}
+header.top .brand span{color:var(--dim);font-weight:500;font-size:.95rem;letter-spacing:.02em}
 header.top .brand:hover{text-decoration:none}
-header.top nav{margin-left:auto;display:flex;gap:1.1rem;font-size:.95rem}
-.hero{border-bottom:1px solid var(--line);background:linear-gradient(90deg,rgba(4,15,38,.6),rgba(11,58,122,.35))}
-.hero .in{max-width:68rem;margin:0 auto;padding:0 1rem;height:clamp(96px,15vw,180px);display:flex;align-items:center;gap:1rem}
-.hero p{flex:1;margin:0;font-size:clamp(1rem,2vw,1.4rem);color:#fff;max-width:34rem}
-.hero img{height:100%;width:auto;margin-left:auto;display:block;
-  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 18%,#000 82%,transparent 100%);
-  mask-image:linear-gradient(90deg,transparent 0,#000 18%,#000 82%,transparent 100%)}
+header.top nav{margin-left:auto;display:flex;gap:1.2rem;font-size:.95rem}
+header.top nav a{color:var(--steel);white-space:nowrap}
+header.top .brand{white-space:nowrap}
+header.top nav a:hover,header.top nav a.on{color:var(--cyan);text-decoration:none}
+
+/* the banner: one line left, the C3 logo right */
+.hero{border-bottom:1px solid var(--line-soft)}
+.hero .in{max-width:68rem;margin:0 auto;padding:0 1rem;height:clamp(96px,14vw,168px);display:flex;align-items:center;gap:1rem}
+.hero p{flex:1;margin:0;font-size:clamp(1rem,2vw,1.35rem);color:#fff;max-width:34rem}
+.hero p:after{content:"";display:block;width:4.5rem;height:3px;margin-top:.7rem;
+  background:linear-gradient(90deg,var(--cyan) 0 72%,transparent 72% 78%,var(--magenta) 78%)}
+.hero img{height:72%;width:auto;margin-left:auto;display:block}
+
 main{max-width:68rem;margin:0 auto 3rem;padding:0 1rem}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:1.1rem 1.3rem;margin:1rem 0}
-.lede{color:var(--dim);margin:1rem 0 .4rem;font-size:.98rem}
-.lede b{color:var(--ink);font-weight:400}
-h1{font-weight:300;font-size:1.7rem;margin:0 0 .4rem;color:#fff}
-h2{font-weight:300;font-size:1.2rem;letter-spacing:.04em;margin:0 0 .6rem;color:var(--cyan)}
-h2 small,h1 small{font-size:.75em;color:var(--dim);letter-spacing:0;margin-left:.5rem}
-h3{font-weight:400;font-size:.95rem;margin:1rem 0 .4rem;color:var(--dim)}
-h3 small{font-weight:300}
+/* the framed cut box: the box's own background is the LINE colour; its ::before, 1 px in, carries the same
+   polygon and the fill - so the 1 px frame follows the cut diagonals too */
+.panel,.notice,details.inputs,.status{position:relative;isolation:isolate;background:var(--line)}
+.panel:before,.notice:before,details.inputs:before,.status:before{content:"";position:absolute;inset:1px;z-index:-1;
+  pointer-events:none;background:var(--fill,linear-gradient(180deg,var(--panel-top),var(--panel-bot)));
+  clip-path:polygon(0 0,calc(100% - var(--cut) + .41px) 0,100% calc(var(--cut) - .41px),100% 100%,calc(var(--cut) - .41px) 100%,0 calc(100% - var(--cut) + .41px))}
+.panel{padding:1.1rem 1.3rem;margin:1rem 0}
+.lede{color:var(--dim);margin:1.1rem 0 .4rem;font-size:.98rem}
+.lede b{color:var(--ink);font-weight:600}
+h1{font-weight:600;font-size:1.7rem;margin:0 0 .4rem;color:#fff}
+h2{font-weight:600;font-size:1.15rem;letter-spacing:.05em;margin:0 0 .6rem;color:var(--cyan);text-transform:uppercase}
+h2 small,h1 small{font-size:.75em;color:var(--dim);letter-spacing:0;margin-left:.5rem;text-transform:none;font-weight:500}
+h3{font-weight:600;font-size:.95rem;margin:1rem 0 .4rem;color:var(--steel)}
+h3 small{font-weight:500}
 p{margin:.4rem 0 .8rem}
 ul,ol{padding-left:1.3rem}li{margin:.3rem 0}
-ul.what{margin:.3rem 0 .9rem}ul.what b{color:var(--ink);font-weight:400}
-code{font-family:ui-monospace,Consolas,monospace;font-size:.88em;color:#fff;background:rgba(255,255,255,.07);
-  padding:.05em .35em;border-radius:3px}
+ul.what{margin:.3rem 0 .9rem}ul.what b{color:var(--ink);font-weight:600}
+code{font-family:ui-monospace,Consolas,monospace;font-size:.88em;color:#fff;background:rgba(0,0,0,.28);
+  padding:.05em .35em;border-radius:2px}
+
+/* the one table style */
 table{border-collapse:collapse;width:100%;margin:.4rem 0 .2rem}
-td,th{text-align:left;padding:.5rem .55rem;border-bottom:1px solid rgba(80,200,255,.12);vertical-align:middle}
-th{font-weight:300;color:var(--dim);font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;padding-top:.2rem}
+td,th{text-align:left;padding:.5rem .55rem;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+th{font-weight:600;color:var(--dim);font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;padding-top:.2rem}
 tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:rgba(54,217,224,.05)}
 td.what small{display:block;color:var(--dim);font-size:.83rem;line-height:1.35;margin-top:.1rem}
-td.what img.icon{float:left;width:44px;height:44px;object-fit:contain;margin:.1rem .75rem .1rem 0;border-radius:6px}
+td.what img.icon{float:left;width:44px;height:44px;object-fit:contain;margin:.1rem .75rem .1rem 0;
+  clip-path:polygon(0 0,calc(100% - var(--cut-s)) 0,100% var(--cut-s),100% 100%,var(--cut-s) 100%,0 calc(100% - var(--cut-s)))}
 td.file{white-space:nowrap}
-td.file a{display:inline-block;padding:.2rem .7rem;border:1px solid var(--line);border-radius:4px;
-  background:rgba(79,200,255,.08);font-size:.88rem}
-td.file a:hover{background:rgba(79,200,255,.22);text-decoration:none}
+td.file a,a.dl{display:inline-block;padding:.22rem .8rem;font-size:.88rem;font-weight:600;color:var(--cyan);
+  background:rgba(54,217,224,.1);box-shadow:inset 0 0 0 1px var(--line);
+  clip-path:polygon(0 0,calc(100% - var(--cut-s)) 0,100% var(--cut-s),100% 100%,var(--cut-s) 100%,0 calc(100% - var(--cut-s)))}
+td.file a:hover,a.dl:hover{background:rgba(255,70,170,.16);box-shadow:inset 0 0 0 1px var(--magenta);color:#fff;text-decoration:none}
 td.file a:before{content:"\\2193  "}
 td.size{white-space:nowrap;color:var(--dim);text-align:right}
 th.size{text-align:right}
 td.when{white-space:nowrap;color:var(--dim);font-size:.85em}
-.chan{display:inline-block;white-space:nowrap;font-size:.78rem;padding:.08rem .5rem;border-radius:999px;
-  border:1px solid currentColor;color:var(--dim)}
+.chan{display:inline-block;white-space:nowrap;font-size:.76rem;font-weight:600;padding:.06rem .55rem;letter-spacing:.02em;
+  color:var(--dim);box-shadow:inset 0 0 0 1px currentColor;
+  clip-path:polygon(0 0,calc(100% - 5px) 0,100% 5px,100% 100%,5px 100%,0 calc(100% - 5px))}
 .chan.rel{color:var(--rel)}.chan.pre{color:var(--pre)}.chan.dev{color:var(--dev)}
-.badge{display:inline-block;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;padding:.02rem .45rem;
-  border-radius:3px;background:rgba(255,138,101,.16);color:var(--warn);margin-left:.4rem;vertical-align:1px}
+.badge{display:inline-block;font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:.02rem .45rem;
+  background:rgba(255,138,101,.16);color:var(--warn);margin-left:.4rem;vertical-align:1px}
 .warn{color:var(--warn)}
-a.dl{display:inline-block;padding:.25rem .7rem;border:1px solid var(--line);border-radius:4px;background:rgba(79,200,255,.08)}
-a.dl:hover{background:rgba(79,200,255,.2);text-decoration:none}
 .older{color:var(--dim);font-size:.9rem}
-details.inputs{margin:1rem 0;border:1px dashed var(--line);border-radius:8px;background:rgba(4,22,56,.45)}
+
+/* Build inputs, folded */
+details.inputs{margin:1rem 0;background:var(--line-soft);--fill:rgba(18,22,28,.72)}
 details.inputs>summary{cursor:pointer;padding:.75rem 1.3rem;color:var(--dim);list-style:none;display:flex;gap:.6rem;align-items:baseline}
 details.inputs>summary::-webkit-details-marker{display:none}
 details.inputs>summary:before{content:"\\25B8";color:var(--cyan);transition:transform .15s}
 details.inputs[open]>summary:before{transform:rotate(90deg)}
-details.inputs>summary b{color:var(--ink);font-weight:400}
+details.inputs>summary b{color:var(--ink);font-weight:600}
 details.inputs>div{padding:0 1.3rem 1rem}
-h2.plat{margin:2rem 0 .2rem;padding-bottom:.3rem;border-bottom:1px solid var(--line);color:#fff;font-size:1.4rem}
+
+/* tabs: the selected one magenta, like the launcher's focus */
+h2.plat{margin:2rem 0 .2rem;padding-bottom:.3rem;border-bottom:1px solid var(--line);color:#fff;font-size:1.35rem;text-transform:none}
 nav.tabs{display:flex;flex-wrap:wrap;gap:.3rem;margin:1.2rem 0 0;border-bottom:1px solid var(--line)}
-nav.tabs a{padding:.55rem 1.1rem;border:1px solid transparent;border-bottom:0;border-radius:6px 6px 0 0;
-  color:var(--dim);font-size:.98rem;margin-bottom:-1px}
-nav.tabs a:hover{color:#fff;text-decoration:none}
-nav.tabs a.active{background:var(--panel);color:var(--cyan);border-color:var(--line)}
+nav.tabs a{position:relative;padding:.55rem 1.1rem;color:var(--steel);font-size:.98rem;font-weight:600;margin-bottom:-1px;
+  clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,0 100%)}
+nav.tabs a:hover{color:#fff;text-decoration:none;background:rgba(54,217,224,.07)}
+nav.tabs a.active{background:linear-gradient(180deg,var(--panel-top),var(--panel-bot));color:#fff;
+  box-shadow:inset 0 3px 0 var(--magenta)}
 body.js section.tab{display:none}
 body.js section.tab.active{display:block}
 body.js section.tab h2.plat{display:none}
 nav.subtabs{display:flex;flex-wrap:wrap;gap:.4rem;margin:1rem 0 .4rem}
-nav.subtabs a{padding:.3rem .9rem;border:1px solid var(--line);border-radius:999px;background:rgba(4,22,56,.5);
-  color:var(--dim);font-size:.9rem}
+nav.subtabs a{padding:.28rem .95rem;color:var(--steel);font-size:.9rem;font-weight:600;background:rgba(18,22,28,.6);
+  box-shadow:inset 0 0 0 1px var(--line-soft);
+  clip-path:polygon(0 0,calc(100% - var(--cut-s)) 0,100% var(--cut-s),100% 100%,var(--cut-s) 100%,0 calc(100% - var(--cut-s)))}
 nav.subtabs a:hover{color:#fff;text-decoration:none}
-nav.subtabs a.active{background:var(--panel);color:var(--cyan);border-color:var(--cyan)}
+nav.subtabs a.active{color:#fff;background:rgba(255,70,170,.14);box-shadow:inset 0 0 0 1px var(--magenta)}
 h3.subtab{font-size:1.15rem;color:#fff;margin:1.4rem 0 .2rem}
 body.js section.subtab{display:none}
 body.js section.subtab.active{display:block}
 body.js section.subtab h3.subtab{display:none}
-.notice{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .8rem;margin:.8rem 0 1rem;padding:.75rem 1rem;
-  border:1px solid var(--line);border-left:3px solid var(--cyan);border-radius:6px;background:rgba(79,200,255,.07)}
+
+/* something to copy into another program */
+.notice{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .8rem;margin:.8rem 0 1rem;padding:.75rem 1rem .75rem 1.2rem;
+  --fill:linear-gradient(90deg,#1d3a42,#1f2a33 60%)}
+.notice:after{content:"";position:absolute;left:0;top:0;bottom:var(--cut);width:3px;background:var(--cyan)}
 .notice .label{flex-basis:100%;color:var(--dim);font-size:.88rem}
-.notice .label b{color:var(--ink);font-weight:400}
+.notice .label b{color:var(--ink);font-weight:600}
 .notice .nrow{display:flex;align-items:center;gap:.8rem;width:100%}
 .notice .nrow .chan{min-width:5.2rem;text-align:center}
-.notice code{flex:1;min-width:0;overflow-wrap:anywhere;font-size:.9rem;padding:.35rem .6rem;background:rgba(0,0,0,.28)}
-button.copy{font:inherit;font-size:.88rem;color:var(--cyan);background:rgba(79,200,255,.08);border:1px solid var(--line);
-  border-radius:4px;padding:.3rem .9rem;cursor:pointer}
-button.copy:hover{background:rgba(79,200,255,.22);color:#fff}
-button.copy.done{color:var(--rel);border-color:var(--rel)}
-footer{color:var(--dim);font-size:.8rem;text-align:center;margin-top:2rem}
+.notice code{flex:1;min-width:0;overflow-wrap:anywhere;font-size:.9rem;padding:.35rem .6rem}
+button.copy{font:inherit;font-size:.86rem;font-weight:600;color:var(--cyan);background:rgba(54,217,224,.1);border:0;
+  box-shadow:inset 0 0 0 1px var(--line);padding:.3rem .95rem;cursor:pointer;
+  clip-path:polygon(0 0,calc(100% - var(--cut-s)) 0,100% var(--cut-s),100% 100%,var(--cut-s) 100%,0 calc(100% - var(--cut-s)))}
+button.copy:hover{background:rgba(255,70,170,.16);box-shadow:inset 0 0 0 1px var(--magenta);color:#fff}
+button.copy.done{color:var(--rel);box-shadow:inset 0 0 0 1px var(--rel)}
+footer{color:var(--dim);font-size:.8rem;text-align:center;margin-top:2rem;padding:0 1rem}
+
+/* NEW - the splash page (/) */
+body.splash{display:flex;flex-direction:column;min-height:100vh}
+body.splash main{flex:1;max-width:46rem;text-align:center;padding-top:clamp(1.5rem,6vh,4.5rem)}
+.splash .logo{width:min(440px,86vw);height:auto;display:block;margin:0 auto .4rem}
+.splash h1{font-size:clamp(1.7rem,4.6vw,2.6rem);margin:.6rem 0 .3rem;letter-spacing:.01em}
+.splash .sub{color:var(--steel);font-size:clamp(1rem,2.2vw,1.15rem);margin:0 auto 1.6rem;max-width:34rem}
+.status{text-align:left;max-width:30rem;margin:0 auto 1.8rem;padding:.9rem 1.2rem}
+.status h2{font-size:.78rem;letter-spacing:.14em;margin:0 0 .45rem;color:var(--dim)}
+.status ul{list-style:none;margin:0;padding:0}
+.status li{display:flex;align-items:center;gap:.7rem;margin:0;padding:.42rem 0;border-top:1px solid var(--line-soft)}
+.status li:first-child{border-top:0}
+.status li .k{flex:1;color:var(--ink)}
+.status li .k small{display:block;color:var(--dim);font-size:.8rem}
+.status li .chan{min-width:6.6rem;text-align:center}
+.status li .dot{width:8px;height:8px;border-radius:50%;background:var(--rel);box-shadow:0 0 8px var(--rel);flex:none}
+.status li .dot.next{background:transparent;box-shadow:inset 0 0 0 2px var(--pre)}
+a.big{display:inline-flex;align-items:center;gap:.7rem;padding:.95rem 2.1rem;font-size:1.15rem;font-weight:600;color:#fff;
+  letter-spacing:.02em;background:linear-gradient(180deg,#ff5cb6,#d9358f);box-shadow:inset 0 0 0 1px rgba(255,255,255,.25);
+  --cut:14px}
+a.big:hover{background:linear-gradient(180deg,#ff73c1,#e8409c);text-decoration:none}
+a.big:before{content:"\\2193";font-size:1.25rem}
+.splash .thanks{color:var(--steel);margin:1.8rem auto .9rem;max-width:32rem;font-size:.95rem}
+.splash .thanks b{color:#fff;font-weight:600}
+a.support{display:inline-block;line-height:0}
+a.support img{width:252px;height:48px}
+a.support:hover img{content:url(/assets/button-support-hover.png)}
+.splash .more{margin-top:1.4rem;font-size:.9rem;color:var(--dim)}
+.splash .more a{margin:0 .5rem}
+
 @media (max-width:640px){
   td.when,th.when,td.size,th.size{display:none}
   .chan{white-space:normal;word-break:break-all}
-  td.file a{padding:.2rem .5rem}
+  td.file a{padding:.2rem .55rem}
   .panel,details.inputs>div{padding-left:.8rem;padding-right:.8rem}
   nav.tabs a{padding:.45rem .7rem;font-size:.9rem}
   td,th{padding:.45rem .35rem}
   header.top nav{gap:.7rem;font-size:.85rem}
   header.top .brand span{display:none}
   .hero img{display:none}
+  a.big{padding:.85rem 1.4rem;font-size:1.05rem}
+  .status{padding:.8rem .9rem}
+  .status li .chan{min-width:0}
+}
+@media (max-width:480px){
+  header.top .bar{gap:.6rem}
+  header.top .brand{font-size:0;gap:0}  /* the emblem alone; the logo is on the page */
+  header.top nav{gap:.85rem;font-size:.84rem}
 }
 """
 
 
 def page_head(title, tagline):
-    """The top of every page: the document head, a slim bar with the emblem and the links, and a short banner -
-    the page's line on the left, the ab2 theme's AutoBleem 2 picture whole on the right - so the first screen
-    shows what to download, not only the picture (the old hero was 590 px tall)."""
+    """The top of every inner page: the document head, a slim bar with the emblem and the links, and a short
+    banner - the page's line on the left, the C3 logo on the right - so the first screen shows what to download.
+    The brand goes to the splash (/), the downloads and the manual to /repository/."""
     e = html.escape
     return ("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
             "<title>%s</title><link rel=\"icon\" href=\"/assets/icon.png\"><style>%s</style>%s</head><body>"
-            "<header class=\"top\"><div class=\"bar\"><a class=\"brand\" href=\"/\"><img src=\"/assets/icon.png\" alt=\"\">"
-            "AutoBleem 2 <span>Downloads</span></a><nav>"
-            "<a href=\"/store/\">Store</a><a href=\"/#manuals\">Manual</a><a href=\"/releases/\">All files</a>"
+            "<header class=\"top\"><div class=\"bar\"><a class=\"brand\" href=\"/\"><img src=\"/assets/emblem.png\" "
+            "srcset=\"/assets/emblem@2x.png 2x\" alt=\"\">AutoBleem 2 <span>Downloads</span></a><nav>"
+            "<a href=\"/store/\">Store</a><a href=\"/repository/#manuals\">Manual</a><a href=\"/releases/\">All files</a>"
             "<a href=\"https://github.com/autobleem2\">GitHub</a></nav></div></header>"
-            "<div class=\"hero\"><div class=\"in\"><p>%s</p><img src=\"/assets/hero.jpg\" alt=\"AutoBleem 2\"></div></div>"
+            "<div class=\"hero\"><div class=\"in\"><p>%s</p><img src=\"/assets/logo.png\" "
+            "srcset=\"/assets/logo@2x.png 2x\" alt=\"AutoBleem 2\"></div></div>"
             % (e(title), PAGE_CSS, COPY_SCRIPT, e(tagline)))
 
 
@@ -1520,7 +1617,7 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
                "<p>Flash an image with <a href=\"https://www.raspberrypi.com/software/\">Raspberry Pi Imager</a> "
                "(<i>Use custom</i>) with a file from the table below, or add this site to Imager as a repository "
                "and pick AutoBleem from Imager's own list. The first boot finishes the install and needs a network. "
-               "<a href=\"/rpi-install.html\">Which image for which Pi, step by step.</a></p>"
+               "<a href=\"/repository/rpi-install.html\">Which image for which Pi, step by step.</a></p>"
                + imager_notice(base_url))
     rpi_titles = (("armhf", "32-bit image (Pi 2/3/4/400/Zero 2) - recommended"),
                   ("arm64", "64-bit image (Pi 3/4/5/400/Zero 2)"))
@@ -1561,7 +1658,7 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
     out.append("<div class=\"panel\"><h2>Install</h2>"
                "<p>A 32-bit Debian appliance on a USB stick: write the image to a stick of 8 GB or more (%s) and "
                "boot the PC from it (BIOS or UEFI, Secure Boot off); the first boot sets AutoBleem up and the rest "
-               "of the stick becomes the games partition. <a href=\"/pc-install.html\">Step by step.</a></p>" % how)
+               "of the stick becomes the games partition. <a href=\"/repository/pc-install.html\">Step by step.</a></p>" % how)
     pc_images = pc.get("images") or {}
     for version in sorted(pc_images, key=version_key, reverse=True):
         for arch, f in sorted(pc_images[version].items()):
@@ -1657,7 +1754,7 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
         out.append(inputs("the cover databases and the sample games the installers fetch", body))
 
     out = tabbed(out)
-    out.append("<footer>Generated %s UTC &middot; theme: ab2</footer></main></body></html>"
+    out.append("<footer>Generated %s UTC &middot; theme: ab2.0.0</footer></main></body></html>"
                % datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"))
     return "\n".join(out) + "\n"
 
@@ -1697,7 +1794,7 @@ def render_store(base_url, store, extension=None, lanshare=None):
     out.append("<p class=\"lede\">What the <b>AutoBleem Store</b> offers on each system. It is an extension of the "
                "launcher: <b>L2+R2 &rarr; Extensions &rarr; AutoBleem Store</b> installs these with one press, "
                "and keeps them up to date. The files are here too. Your own lists of downloads go in the Store's "
-               "<b>Sources</b> tab. <a href=\"/\">&larr; Downloads</a></p>")
+               "<b>Sources</b> tab. <a href=\"/repository/\">&larr; Downloads</a></p>")
 
     def section(platform):
         items = store.get(platform) or []
@@ -1773,7 +1870,7 @@ def render_store(base_url, store, extension=None, lanshare=None):
                                  "&middot; <a href=\"https://github.com/autobleem2/ext_store/blob/develop/server/"
                                  "README.md\">every option</a></p>"))
     out = tabbed(out)
-    out.append("<footer>Generated %s UTC &middot; theme: ab2</footer></main></body></html>"
+    out.append("<footer>Generated %s UTC &middot; theme: ab2.0.0</footer></main></body></html>"
                % datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"))
     return "\n".join(out) + "\n"
 
@@ -1881,7 +1978,7 @@ def render_rpi_install(base_url, images):
                "<p>AutoBleem turns a Raspberry Pi into a PlayStation Classic-style console: it boots straight into "
                "the game carousel, plays PlayStation games with its own emulator, and - with RetroArch - the "
                "other systems too. The image is Raspberry Pi OS Lite with AutoBleem's setup added; the first boot "
-               "finishes the installation by itself. <a href=\"/\">&larr; Downloads</a></p></div>")
+               "finishes the installation by itself. <a href=\"/repository/\">&larr; Downloads</a></p></div>")
 
     out.append("<div class=\"panel\"><h2>Which image</h2>"
                "<p>Two images, one per flavour of Raspberry Pi OS. <strong>The 32-bit image is the one to take</strong> "
@@ -1963,13 +2060,13 @@ def render_rpi_install(base_url, images):
                "first-boot options as <code>key=value</code>: the system partition's size, the HDMI mode, the "
                "RetroArch answer, whether to mirror the box art. Edit it before the first boot; comments in the file "
                "explain each key.</p>"
-               "<p>To update an installed Pi, download the Raspberry Pi tarball from the <a href=\"/\">downloads</a> "
+               "<p>To update an installed Pi, download the Raspberry Pi tarball from the <a href=\"/repository/\">downloads</a> "
                "page, unpack it on the Pi and run <code>sudo bash install.sh</code> - it keeps the games partition "
                "and everything on it, and skips what is already installed.</p>"
                "<p>Questions and bug reports: <a href=\"https://github.com/autobleem/AutoBleem2\">github.com/autobleem/AutoBleem2</a>. "
                "The Pi's logs are in <code>System/Logs/</code> on the games partition.</p></div>")
 
-    out.append("<footer>Generated %s UTC &middot; theme: ab2</footer></main></body></html>"
+    out.append("<footer>Generated %s UTC &middot; theme: ab2.0.0</footer></main></body></html>"
                % datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"))
     return "\n".join(out) + "\n"
 
@@ -1987,7 +2084,7 @@ def render_pc_install(base_url, images):
                "<p>AutoBleem on a USB stick that turns any PC into a PlayStation Classic-style console: boot the PC "
                "from the stick and it comes up in the game carousel, with nothing of the PC's own disks touched. "
                "Games live on the stick itself, on a partition any computer can write to. A 32-bit Linux is inside, "
-               "so an old PC works as well as a new one. <a href=\"/\">&larr; Downloads</a></p>")
+               "so an old PC works as well as a new one. <a href=\"/repository/\">&larr; Downloads</a></p>")
     if newest:
         f = images[newest].get("i386")
         if f:
@@ -2071,6 +2168,74 @@ def render_pc_install(base_url, images):
     return "\n".join(out)
 
 
+#*******************************
+# the splash page (/) and the old addresses
+#*******************************
+def splash_nightly_row(nightly):
+    """the splash's third row from index_nightly's builds: the newest one's day, "running"; none = "paused" """
+    build = next((b for b in reversed(nightly or []) if b.get("files")), None) or (nightly[-1] if nightly else None)
+    if not build:
+        return ("Nightly builds", "every change, built overnight - none at the moment", "", "paused")
+    day = datetime.strptime(build["date"][:10], "%Y-%m-%d")
+    months = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+    return ("Nightly builds", "every change, built overnight - last one %d %s %d" % (day.day, months[day.month - 1], day.year),
+            "dev", "running")
+
+
+def render_splash(base_url, nightly=None):
+    """index.html: the splash - the logo, "AutoBleem 2 is coming", the status block (SPLASH_STATUS and the nightly
+    row), the Download button (-> /repository/), a thank-you and the Ko-fi button (KOFI_URL, left out when empty)."""
+    e = html.escape
+    rows = []
+    for label, note, cls, pill in list(SPLASH_STATUS) + [splash_nightly_row(nightly)]:
+        rows.append("<li><span class=\"dot%s\"></span><span class=\"k\">%s<small>%s</small></span>"
+                    "<span class=\"chan%s\">%s</span></li>"
+                    % ("" if cls else " next", e(label), e(note), " " + cls if cls else "", e(pill)))
+    support = ""
+    if KOFI_URL:
+        support = ("<a class=\"support\" href=\"%s\" target=\"_blank\" rel=\"noopener\" title=\"Support AutoBleem on Ko-fi\">"
+                   "<img src=\"/assets/button-support.png\" srcset=\"/assets/button-support@2x.png 2x\" "
+                   "alt=\"Support AutoBleem\"></a>" % e(KOFI_URL))
+    return ("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">\n"
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+            "<title>AutoBleem 2 is coming</title>\n"
+            "<meta name=\"description\" content=\"AutoBleem 2 - the game launcher for the PlayStation Classic, the Raspberry Pi "
+            "and the PC. Early builds are out.\">\n"
+            "<meta property=\"og:title\" content=\"AutoBleem 2 is coming\"><meta property=\"og:image\" content=\"%s/assets/og.png\">\n"
+            "<link rel=\"icon\" href=\"/assets/icon.png\">\n<style>%s</style>\n"
+            "</head><body class=\"splash\">\n"
+            "<header class=\"top\"><div class=\"bar\"><a class=\"brand\" href=\"/\"><img src=\"/assets/emblem.png\" "
+            "srcset=\"/assets/emblem@2x.png 2x\" alt=\"\">AutoBleem 2</a><nav>\n"
+            "<a href=\"/repository/\">Downloads</a><a href=\"/store/\">Store</a><a href=\"/repository/#manuals\">Manual</a>"
+            "<a href=\"https://github.com/autobleem2\">GitHub</a></nav></div></header>\n"
+            "<main>\n"
+            "  <img class=\"logo\" src=\"/assets/logo.png\" srcset=\"/assets/logo@2x.png 2x\" alt=\"AutoBleem 2\">\n"
+            "  <h1>AutoBleem 2 is coming</h1>\n"
+            "  <p class=\"sub\">The game launcher for the PlayStation Classic, the Raspberry Pi and the PC is being rebuilt from "
+            "the ground up. It is not finished yet - but you can already try the early builds.</p>\n\n"
+            "  <section class=\"status\" aria-label=\"Where we are\">\n    <h2>Where we are</h2>\n    <ul>\n      %s\n    </ul>\n"
+            "  </section>\n\n"
+            "  <a class=\"big\" href=\"/repository/\">Download early builds</a>\n\n"
+            "  <p class=\"thanks\"><b>Thank you</b> to everyone downloading, testing and reporting - every early build that "
+            "gets tried makes AutoBleem 2 better.</p>\n"
+            "  %s\n"
+            "  <p class=\"more\"><a href=\"/repository/\">All downloads</a> &middot; <a href=\"/store/\">AutoBleem Store</a> "
+            "&middot; <a href=\"https://github.com/autobleem2\">Source on GitHub</a></p>\n"
+            "</main>\n"
+            "<footer><p>AutoBleem 2 is free and open source. PlayStation is a trademark of Sony Interactive Entertainment; "
+            "AutoBleem is not affiliated with Sony.</p></footer>\n"
+            "</body></html>\n" % (base_url, PAGE_CSS, "\n      ".join(rows), support))
+
+
+def render_moved(name):
+    """a page that moved to /repository/<name>: the old address stays alive for old links, a refresh and a link"""
+    target = "/repository/" + name
+    return ("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+            "<title>Moved</title><meta http-equiv=\"refresh\" content=\"0; url=%s\">"
+            "<link rel=\"canonical\" href=\"%s\"></head><body>"
+            "<p>This page has moved to <a href=\"%s\">%s</a>.</p></body></html>\n" % (target, target, target, target))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("repo", help="the repository directory")
@@ -2106,11 +2271,15 @@ def main():
     pcsx = {name: index_pcsx(repo, base_url, name) for name, _, _ in EMULATORS}
     pcsx = {name: b for name, b in pcsx.items() if b}
     pc = {"builds": pc_builds, "cores": pc_cores, "images": pc_images, "win": win}
-    pages = [("index.html", render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc_cores, samples,
-                                         psc_libs, psc_apps, psc_bios, pc, pcsx, manuals, psc_kernel, nightly,
-                                         store_pages)),
-             ("rpi-install.html", render_rpi_install(base_url, images)),
-             ("pc-install.html", render_pc_install(base_url, pc_images))]
+    os.makedirs(os.path.join(repo, "repository"), exist_ok=True)
+    pages = [("index.html", render_splash(base_url, nightly)),
+             (os.path.join("repository", "index.html"),
+              render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc_cores, samples,
+                           psc_libs, psc_apps, psc_bios, pc, pcsx, manuals, psc_kernel, nightly, store_pages)),
+             (os.path.join("repository", "rpi-install.html"), render_rpi_install(base_url, images)),
+             (os.path.join("repository", "pc-install.html"), render_pc_install(base_url, pc_images)),
+             ("rpi-install.html", render_moved("rpi-install.html")),
+             ("pc-install.html", render_moved("pc-install.html"))]
     if os.path.isdir(os.path.join(repo, "store")) or extensions.get("store") or extensions.get("lanshare"):
         os.makedirs(os.path.join(repo, "store"), exist_ok=True)
         pages.append((os.path.join("store", "index.html"),
