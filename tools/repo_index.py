@@ -10,6 +10,7 @@ Reads what is there (CLAUDE.md, "The download repository", has the layout) and w
     releases/<tag>/release.json        the packages of that release: name, size, sha256, url
     releases/latest.json               the newest stable release's release.json
     releases/unstable.json             the one pre-release kept, same shape
+    channels.json                      the release channels the PC installers list (id, label, index, images, unstable)
     rpi/retroarch/latest.json          the newest RetroArch build per architecture
     psc/retroarch/latest.json          the newest RetroArch build for the PlayStation Classic (psc/retroarch/<tag>/)
     psc/cores/latest.json              the newest cores tarball for the console (psc/cores/cores-psc-<date>.tar.gz)
@@ -1237,6 +1238,52 @@ def index_nightly(repo, base_url, section="nightly"):
 
 
 #*******************************
+# channels.json - the release channels the PC installers offer
+#*******************************
+# The PC Installer and the Flasher read <site>/channels.json to fill their channel list, so a new channel (the
+# preview one) shows up without a new program. Each entry: id, label, index (the channel's own latest json, the
+# stick package's file), images (only when the PC stick image lives in another file - pc/images/<id>.json) and
+# unstable. Stable first; a channel is listed only when its json exists. The channels' own jsons are not touched.
+PREVIEW_VERSION_RE = re.compile(r"^preview-(?P<branch>.+)-[0-9a-f]{6,}$")
+
+
+def write_channels(repo):
+    """channels.json at the site's root; returns the channel list. Nothing to list = the file is removed."""
+    def has(path):
+        return os.path.isfile(os.path.join(repo, *path.split("/")))
+
+    channels = []
+
+    def add(cid, label, index, unstable, images=None):
+        if not has(index):
+            return
+        entry = {"id": cid, "label": label, "index": index, "unstable": unstable}
+        if images and has(images):
+            entry["images"] = images
+        channels.append(entry)
+
+    add("release", "Release", "releases/latest.json", False, "pc/images/release.json")
+    add("testing", "Testing", "releases/unstable.json", False, "pc/images/testing.json")
+    add("nightly", "Nightly", "nightly/latest.json", True)
+    label = "Preview"
+    if has("preview/latest.json"):
+        try:
+            with open(os.path.join(repo, "preview", "latest.json"), encoding="utf-8") as f:
+                m = PREVIEW_VERSION_RE.match(json.load(f).get("version", ""))
+            if m:
+                label = "Preview (%s)" % m.group("branch")
+        except (OSError, ValueError, AttributeError):
+            pass
+    add("preview", label, "preview/latest.json", True)
+    path = os.path.join(repo, "channels.json")
+    if channels:
+        write_json(path, {"version": 1, "channels": channels})
+    elif os.path.isfile(path):
+        os.remove(path)
+    return channels
+
+
+#*******************************
 # the landing page
 #*******************************
 # The ab2.0.0 look (graphite, cyan lines, magenta for the selected thing, cut corners, Red Hat Text), designed in
@@ -2292,6 +2339,7 @@ def main():
     manuals = index_manuals(repo, base_url)
     nightly = index_nightly(repo, base_url)
     preview = index_nightly(repo, base_url, "preview")
+    write_channels(repo)
     store_pages = {}
     store = index_store(repo, base_url, store_pages)
     extensions = index_extensions(repo, base_url)
