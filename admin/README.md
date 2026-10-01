@@ -39,6 +39,13 @@ team's action log.
 Then `https://autobleem.retromenele.pl/admin/` asks for the GitHub login once; an org member sees the page,
 a `release-managers` member also its buttons.
 
+## The Teams tab's feed
+
+The tab reads a private `teams.json` (`AB_ADMIN_TEAMS_FILE`, default `/feed/teams.json`), which the company's
+tooling copies to `~/admin-data/` on the build server; `docker/repo/compose.yml` mounts that directory
+(`ADMIN_FEED_DIR`) read-only into the admin service only. Caddy serves `/srv/repo` and nothing else, so the
+file is not reachable from the web. When it is missing or older than 60 minutes the tab says "no source" and why.
+
 ## For scripts and Claude sessions
 
 The same API with your own GitHub token as the bearer - the same rules as the browser, recorded in the audit

@@ -652,17 +652,17 @@ function renderTeams() {
   tb.replaceChildren(); needs.replaceChildren();
   if (st) {
     const stale = Date.now() - new Date(st.written_at).getTime() > 3600e3;
-    document.getElementById("teamsAge").textContent = st.written_at ? "written " + ago(st.written_at) + " by " + st.written_by : "";
+    document.getElementById("teamsAge").textContent = st.written_at ? "written " + ago(st.written_at) : "";
     tb.style.opacity = stale ? .5 : 1;
     for (const m of st.teams) tb.append(el("tr", {},
       el("td", {}, m.name, el("small", {}, m.team)),
       el("td", {class: "state-" + m.state}, m.state),
       el("td", {}, m.items.map(i => el("div", {}, el("code", {class: "tid"}, i.id), " ", i.what)), m.note ? el("small", {}, m.note) : null)));
-    const u = st.usage || {};
-    document.getElementById("usage").textContent = u.five_hour_percent !== undefined
-      ? "Usage: 5-hour " + u.five_hour_percent + "%" +
-        (u.five_hour_resets_at ? " (resets " + new Date(u.five_hour_resets_at).toLocaleTimeString() + ")" : "") +
-        " · weekly " + u.weekly_percent + "%" + (u.weekly_cap_today_percent ? " of today's " + u.weekly_cap_today_percent + "%" : "") : "";
+    const u = st.budget || {};
+    document.getElementById("usage").textContent = u.week_pct != null
+      ? "Budget: 5-hour " + u.h5_pct + "% · weekly " + u.week_pct + "%" +
+        (u.pace_pct_per_h != null ? " · pace " + u.pace_pct_per_h + "%/h" : "") +
+        (u.stop_day ? " · stop day " + u.stop_day : "") : "";
     for (const n of st.needs_owner)
       needs.append(el("li", {}, el("span", {class: "kind"}, n.kind), el("code", {class: "tid"}, n.id), " ", n.what,
         n.howto ? el("button", {type: "button", class: "howto", title: "How to do it", "aria-label": "How to do it",
