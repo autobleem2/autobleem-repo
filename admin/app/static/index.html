@@ -701,10 +701,13 @@ function renderTeams() {
     const stale = Date.now() - new Date(st.written_at).getTime() > 3600e3;
     document.getElementById("teamsAge").textContent = st.written_at ? "written " + ago(st.written_at) : "";
     tb.style.opacity = stale ? .5 : 1;
+    if (st.mode && st.mode !== "full") tb.append(el("tr", {}, el("td", {colspan: 3, class: "dim"},
+      "Mode: " + st.mode + (st.mode === "crunch" || st.mode === "lite" ? " - PM hub + contractors" : ""))));
     for (const m of st.teams) tb.append(el("tr", {},
       el("td", {}, m.name, el("small", {}, m.team)),
       el("td", {class: "state-" + m.state}, m.state),
       el("td", {}, m.items.map(i => el("div", {}, el("code", {class: "tid"}, i.id), " ", i.what)), m.note ? el("small", {}, m.note) : null)));
+    if (st.leads_note) tb.append(el("tr", {}, el("td", {colspan: 3, class: "dim"}, st.leads_note)));
     const u = st.budget || {};
     document.getElementById("usage").textContent = u.week_pct != null
       ? "Budget: 5-hour " + u.h5_pct + "% · weekly " + u.week_pct + "%" +

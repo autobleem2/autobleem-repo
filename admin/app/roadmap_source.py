@@ -69,6 +69,8 @@ class RoadmapSource:
         flights = {c.get("lead"): c for c in data.get("contractors") or [] if isinstance(c, dict)}
         return {"status": {
             "written_at": data["generated_at"],
+            "mode": str(data.get("mode") or "full"),
+            "leads_note": str(data.get("leads_note") or ""),
             "budget": _budget(data.get("budget")),
             "teams": [_session(s, flights.get(s.get("name"))) for s in data.get("sessions") or []
                       if isinstance(s, dict)],
@@ -102,7 +104,7 @@ def _session(s, flight):
     queued = [str(q) for q in (flight or {}).get("queued") or []]
     return {"name": str(s.get("name", "")), "team": " · ".join(x for x in (str(s.get("role", "")), str(s.get("model", ""))) if x),
             "state": str(s.get("state", "")) or "unknown", "items": items,
-            "note": ("queued: " + ", ".join(queued)) if queued else ""}
+            "note": ("queued: " + ", ".join(queued)) if queued else ("" if items else str(s.get("task", "")))}
 
 
 def _budget(b):
