@@ -11,7 +11,7 @@ on:
       kind:
         description: which channel the build is on
         type: choice
-        options: [nightly, testing]
+        options: [nightly, testing, preview]
       version:
         description: the build's version (its folder name on the site)
         type: string

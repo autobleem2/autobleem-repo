@@ -301,3 +301,29 @@ def test_owner_done_is_audited_and_listed(setup):
     assert all(d["user"] == "alice" for d in done)
     audit = client.get("/admin/api/audit", headers=browser("bob")).json()
     assert audit[0]["action"] == "owner-done" and audit[0]["params"] == {"id": "318"}
+
+
+def test_preview_build_starts_the_main_preview_workflow(setup):
+    client, gh, _ = setup
+    r = client.post("/admin/api/preview-build", json={"branch": "feature/ab-gui", "platforms": ["psc", "bogus"]},
+                    headers=browser("alice", True))
+    assert r.status_code == 200
+    dispatch = [c for c in gh.calls if c[0] == "POST"][-1]
+    assert dispatch[1] == "/repos/autobleem2/autobleem-main/actions/workflows/preview.yml/dispatches"
+    assert dispatch[2]["inputs"] == {"branch": "feature/ab-gui", "platforms": "psc", "dry_run": False}
+    for bad in ("develop", "", "a..b", "x y", "feature/$(id)"):
+        r = client.post("/admin/api/preview-build", json={"branch": bad}, headers=browser("alice", True))
+        assert r.status_code == 400, bad
+    assert client.post("/admin/api/preview-build", json={"branch": "feature/x"},
+                       headers=browser("bob", True)).status_code == 403
+
+
+def test_a_preview_is_withdrawn_by_its_folder_name(setup):
+    client, gh, _ = setup
+    r = client.post("/admin/api/withdraw", json={"kind": "preview", "version": "preview-feature-ab-gui-1a2b3c"},
+                    headers=browser("alice", True))
+    assert r.status_code == 200
+    assert [c for c in gh.calls if c[0] == "POST"][-1][2]["inputs"]["kind"] == "preview"
+    r = client.post("/admin/api/withdraw", json={"kind": "preview", "version": "v2.0.0-alpha3"},
+                    headers=browser("alice", True))
+    assert r.status_code == 400

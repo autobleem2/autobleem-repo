@@ -33,6 +33,12 @@ class NightlyRequest(BaseModel):
     dry_run: bool = False
 
 
+class PreviewBuildRequest(BaseModel):
+    branch: str
+    platforms: list = []
+    dry_run: bool = False
+
+
 class PromoteRequest(BaseModel):
     kind: str
     version: str = ""
@@ -180,6 +186,11 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
     def nightly(body: NightlyRequest, who=Depends(actor)):
         return act(who, "nightly", body.model_dump(),
                    lambda: actions.nightly(body.platforms, body.rebuild_all, body.dry_run))
+
+    @app.post("/admin/api/preview-build")
+    def preview_build(body: PreviewBuildRequest, who=Depends(actor)):
+        return act(who, "preview-build", body.model_dump(),
+                   lambda: actions.preview_build(body.branch, body.platforms, body.dry_run))
 
     @app.post("/admin/api/promote")
     def promote(body: PromoteRequest, who=Depends(actor)):

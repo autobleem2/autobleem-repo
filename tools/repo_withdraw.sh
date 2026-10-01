@@ -3,6 +3,7 @@
 #
 #   REPO_DIR=<site tree> tools/repo_withdraw.sh nightly  v2.0.0-alpha2-25-g7a37132
 #   REPO_DIR=<site tree> tools/repo_withdraw.sh testing  v2.0.0-alpha3
+#   REPO_DIR=<site tree> tools/repo_withdraw.sh preview  preview-feature-ab-gui-1a2b3c
 #   REPO_DIR=<site tree> tools/repo_withdraw.sh restore  <kind> <version>      puts one back
 #
 # The build's folders are moved, never deleted, into <site>/.withdrawn/<kind>/<version>/ (Caddy hides dot
@@ -12,14 +13,19 @@
 # check and the installers do. A stable release is never withdrawn this way.
 set -euo pipefail
 REPO_DIR="${REPO_DIR:?REPO_DIR is the site tree}"
-usage() { sed -n '2,6p' "$0" >&2; exit 2; }
+usage() { sed -n '2,7p' "$0" >&2; exit 2; }
 
 restore=0
 if [ "${1:-}" = restore ]; then restore=1; shift; fi
 kind="${1:-}"; version="${2:-}"
-[[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || usage
+if [ "$kind" = preview ]; then
+    [[ "$version" =~ ^preview-[a-z0-9.-]+$ ]] || usage
+else
+    [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || usage
+fi
 case "$kind" in
     nightly) folders=("nightly/$version") ;;
+    preview) folders=("preview/$version") ;;
     testing)
         [[ "$version" == *-* ]] || { echo "$version is a stable release - not withdrawn this way" >&2; exit 1; }
         folders=("releases/$version" "rpi-imager/images/$version" "pc/images/$version") ;;

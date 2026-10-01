@@ -9,6 +9,10 @@ import time
 PLATFORMS = ("rpi-armhf", "rpi-arm64", "pcusb", "psc", "win")
 KINDS = ("alpha", "beta", "rc", "release")
 VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$")
+# a preview's folder (autobleem-appliance's assemble.yml: preview-<branch slug>-<fingerprint>) and the branch
+# a preview is built from (autobleem-main's release.py PREVIEW_BRANCH)
+PREVIEW_VERSION_RE = re.compile(r"^preview-[a-z0-9.-]+$")
+BRANCH_RE = re.compile(r"^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$")
 
 # keep in step with autobleem-main's tools/release.py (next_tag): the tag a promotion makes
 TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc|pre)\.?(\d+))?$")
@@ -73,6 +77,16 @@ class Actions:
         return self._dispatch("autobleem-main", "nightly.yml", {
             "platforms": " ".join(chosen), "rebuild_all": bool(rebuild_all), "dry_run": bool(dry_run)})
 
+    def preview_build(self, branch, platforms, dry_run=False):
+        """PLATFORM-20: a feature branch built into preview/<version>/ (autobleem-main's preview.yml)"""
+        branch = (branch or "").strip()
+        if not BRANCH_RE.match(branch) or branch in ("develop", "master", "main"):
+            raise ValueError("a feature branch, e.g. feature/ab-gui")
+        chosen = [p for p in platforms if p in PLATFORMS] or list(PLATFORMS)
+        self._dispatch("autobleem-main", "preview.yml", {
+            "branch": branch, "platforms": " ".join(chosen), "dry_run": bool(dry_run)})
+        return "preview of %s started%s" % (branch, " (dry run)" if dry_run else "")
+
     def preview(self, kind, version=None):
         if kind not in KINDS:
             raise ValueError("kind is one of " + ", ".join(KINDS))
@@ -97,8 +111,9 @@ class Actions:
         return "re-ran %s run %s" % (repo, run_id)
 
     def withdraw(self, kind, version, restore=False):
-        if kind not in ("nightly", "testing") or not VERSION_RE.match(version or ""):
-            raise ValueError("a nightly or testing build, by its version")
+        ok = PREVIEW_VERSION_RE if kind == "preview" else VERSION_RE
+        if kind not in ("nightly", "testing", "preview") or not ok.match(version or ""):
+            raise ValueError("a nightly, testing or preview build, by its version")
         if kind == "testing" and "-" not in version:
             raise ValueError("a stable release is not withdrawn from here")
         return self._dispatch("autobleem-repo", "withdraw.yml",

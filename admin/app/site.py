@@ -29,6 +29,7 @@ def channels(repo_dir):
     release = _read(os.path.join(repo_dir, "releases", "latest.json"))
     testing = _read(os.path.join(repo_dir, "releases", "unstable.json"))
     nightly = _read(os.path.join(repo_dir, "nightly", "latest.json"))
+    preview = _read(os.path.join(repo_dir, "preview", "latest.json"))
     # latest.json is the newest stable, else the pre-release: a pre-release there is not the release channel
     if release and release.get("prerelease"):
         release = None
@@ -38,7 +39,7 @@ def channels(repo_dir):
         if pc:
             images[name] = pc.get("version")
     return {"release": channel_summary(release), "testing": channel_summary(testing),
-            "nightly": channel_summary(nightly), "pc_images": images}
+            "nightly": channel_summary(nightly), "preview": channel_summary(preview), "pc_images": images}
 
 
 STORE_PLATFORMS = ("psc", "rpi", "rpi64", "pcusb", "win")

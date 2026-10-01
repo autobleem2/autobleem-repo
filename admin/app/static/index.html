@@ -303,6 +303,16 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
     </section>
 
     <section class="panel actonly">
+      <h2>Preview <small>builds a feature branch where it exists, the rest from nightly, into preview/</small></h2>
+      <div class="row">
+        <input type="text" id="previewBranch" placeholder="branch, e.g. feature/ab-gui" size="28">
+        <label><input type="checkbox" id="previewDry"> dry run</label>
+        <button id="previewGo" type="button">Build preview</button>
+      </div>
+      <p class="dim">the platforms ticked under Nightly above; the newest preview replaces the previous one.</p>
+    </section>
+
+    <section class="panel actonly">
       <h2>Promote <small>develop to testing, a release candidate, or a release</small></h2>
       <div class="row">
         <select id="kind">
@@ -326,6 +336,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
         <select id="withdrawKind">
           <option value="nightly">Nightly</option>
           <option value="testing">Testing</option>
+          <option value="preview">Preview</option>
         </select>
         <input type="text" id="withdrawVersion" placeholder="version, e.g. v2.0.0-alpha3" size="26">
         <label><input type="checkbox" id="withdrawRestore"> restore instead (bring it back)</label>
@@ -542,7 +553,7 @@ function renderStatus(s) {
 // -------------------------------------------------------------------------------- Releases tab
 function renderChannels(c) {
   const tb = document.getElementById("channels"); tb.replaceChildren();
-  for (const [name, cls] of [["release", "rel"], ["testing", "pre"], ["nightly", "dev"]]) {
+  for (const [name, cls] of [["release", "rel"], ["testing", "pre"], ["nightly", "dev"], ["preview", "dev"]]) {
     const ch = c[name];
     const facts = ch ? [ch.packages.length + " packages", ch.images.length ? ch.images.length + " images" : null,
                         ch.date].filter(Boolean).join(" · ") : null;
@@ -902,6 +913,13 @@ async function start() {
     act("Refresh the nightly for " + (platforms.join(", ") || "every platform"), "nightly", {platforms,
         rebuild_all: document.getElementById("rebuildAll").checked,
         dry_run: document.getElementById("nightlyDry").checked});
+  };
+  document.getElementById("previewGo").onclick = () => {
+    const branch = document.getElementById("previewBranch").value.trim();
+    if (!branch) { toast("give a branch", true); return; }
+    const platforms = [...document.querySelectorAll("#platforms input:checked")].map(i => i.value);
+    act("Build a preview of " + branch + " for " + (platforms.join(", ") || "every platform"), "preview-build",
+        {branch, platforms, dry_run: document.getElementById("previewDry").checked});
   };
   document.getElementById("kind").onchange = preview;
   document.getElementById("version").oninput = () => { clearTimeout(preview.t); preview.t = setTimeout(preview, 400); };
