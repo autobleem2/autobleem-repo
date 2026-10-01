@@ -6,6 +6,10 @@
 #                                                                              -> nightly/<version>/ (a development build of
 #                                                                                 develop: the release packages and images; the
 #                                                                                 3 newest kept, never an update channel)
+#   tools/repo_publish.sh preview preview-feature-ab-gui-1a2b3c dist/*/*.tar.gz ...
+#                                                                              -> preview/<version>/ (a build of a feature
+#                                                                                 branch, PLATFORM-20: like a nightly, the
+#                                                                                 newest kept; --partial too)
 #   tools/repo_publish.sh image v2.0.0-pre0-933bd2f build_rpi_image/*.img.xz build_rpi_image/rpi_imager_repo.json
 #                                                                              -> rpi-imager/images/<version>/
 #   tools/repo_publish.sh retroarch v1.22.2 retroarch-v1.22.2-armhf.tar.gz     -> rpi/retroarch/v1.22.2/
@@ -115,7 +119,7 @@ what latest.json / release.json / unstable.json / os_list*.json list next - not
 necessarily the version just withdrawn (repo_index.py's index_* functions read the tree
 with os.listdir(), so once the folder is gone the next-newest wins on its own).
 
-<kind> is one of: release, nightly, image, retroarch, cores, pc-image, pc-retroarch,
+<kind> is one of: release, nightly, preview, image, retroarch, cores, pc-image, pc-retroarch,
 pc-cores, psc-retroarch, win-retroarch, pcsx, pcsx-ab, extension.
 
 --dry-run prints the exact folder and its files, and the re-index command that would run,
@@ -143,6 +147,7 @@ do_withdraw() {
     case "$wkind" in
         release)       [ -n "$pos1" ] || withdraw_usage 1; wdest="releases/$pos1" ;;
         nightly)       [ -n "$pos1" ] || withdraw_usage 1; wdest="nightly/$pos1" ;;
+        preview)       [ -n "$pos1" ] || withdraw_usage 1; wdest="preview/$pos1" ;;
         image)         [ -n "$pos1" ] || withdraw_usage 1; wdest="rpi-imager/images/$pos1" ;;
         retroarch)     [ -n "$pos1" ] || withdraw_usage 1; wdest="rpi/retroarch/$pos1" ;;
         cores)         [ -n "$pos1" ] || withdraw_usage 1; wdest="rpi/cores/$pos1" ;;
@@ -210,6 +215,7 @@ KIND="$1"; shift
 case "$KIND" in
     release)   [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="releases/$VERSION" ;;
     nightly)   [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="nightly/$VERSION" ;;
+    preview)   [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="preview/$VERSION" ;;
     image)     [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="rpi-imager/images/$VERSION" ;;
     retroarch) [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="rpi/retroarch/$VERSION" ;;
     cores)     [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="rpi/cores/$VERSION" ;;
@@ -238,8 +244,8 @@ case "$KIND" in
     index)     DEST="" ;;
     *)         echo "unknown kind: $KIND" >&2; usage 1 ;;
 esac
-if [ "$PARTIAL" -eq 1 ] && [ "$KIND" != nightly ]; then
-    echo "--partial is for a development build (nightly) only" >&2
+if [ "$PARTIAL" -eq 1 ] && [ "$KIND" != nightly ] && [ "$KIND" != preview ]; then
+    echo "--partial is for a development build (nightly, preview) only" >&2
     exit 1
 fi
 
@@ -304,7 +310,7 @@ remote_index() {
     cat <<EOF
 set -e
 cd "$REPO_DIR"
-$( [ "$KIND" = nightly ] && echo "rm -f \"$DEST/.incomplete\" # the build's last publish: it is a nightly now" )
+$( { [ "$KIND" = nightly ] || [ "$KIND" = preview ]; } && echo "rm -f \"$DEST/.incomplete\" # the build's last publish: it is whole now" )
 if [ -f assets/icon.png ]; then mkdir -p rpi-imager && cp assets/icon.png rpi-imager/icon.png; fi
 if [ -f assets/favicon.ico ]; then cp assets/favicon.ico favicon.ico; fi
 if ! python3 .tools/repo_index.py . --base-url "$AB_REPO_URL"; then

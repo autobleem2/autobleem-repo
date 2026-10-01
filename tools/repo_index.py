@@ -690,7 +690,7 @@ def index_cores(repo, base_url, platform="rpi"):
 # class, label) - filled by write_imager_list(), read by imager_notice()
 IMAGER_LISTS = []
 IMAGER_CHANNELS = {"os_list.json": ("rel", "release"), "os_list-testing.json": ("pre", "testing"),
-                   "os_list-nightly.json": ("dev", "nightly")}
+                   "os_list-nightly.json": ("dev", "nightly"), "os_list-preview.json": ("dev", "preview")}
 
 
 def write_imager_list(repo, base_url, name, template, files, channel=""):
@@ -1158,13 +1158,16 @@ def unfinished_nightlies(folders, is_incomplete, published, now):
     return [f for f in unfinished if f not in stale], stale
 
 
-def index_nightly(repo, base_url):
+def index_nightly(repo, base_url, section="nightly"):
     """nightly/<version>/ - the development builds of develop (the nightly run, or one started by hand): the
     packages a release has, named by `git describe` (v2.0.0-alpha2-14-gabc1234), and the images when that run
     made them. nightly_folders_to_keep() decides what stays; each folder gets release.json + SHA256SUMS,
     nightly/latest.json is the newest with packages. An installed launcher's update check never reads this - it stays on
-    releases/ (latest.json, unstable.json)."""
-    root = os.path.join(repo, "nightly")
+    releases/ (latest.json, unstable.json).
+    section="preview" (PLATFORM-20) indexes preview/<version>/ the same way - a feature branch's build, started from
+    the admin panel: preview/latest.json (psc kept: a console on the Preview channel reads it) and
+    rpi-imager/os_list-preview.json. The download page does not list it; its link is given to whoever tests it."""
+    root = os.path.join(repo, section)
     if not os.path.isdir(root):
         return []
 
@@ -1206,7 +1209,7 @@ def index_nightly(repo, base_url):
                 f.write("%s  %s\n" % (entry["sha256"], entry["name"]))
         build = {
             "version": os.path.basename(folder),
-            "channel": "dev",
+            "channel": "dev" if section == "nightly" else section,
             "date": datetime.fromtimestamp(published(folder), timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
             "files": files,
             "images": images,
@@ -1226,10 +1229,10 @@ def index_nightly(repo, base_url):
     # rpi_imager_repo.json next to them) - from the newest build that has them, see nightly_folders_to_keep
     with_images = [b for b in builds if any(a in ("armhf", "arm64") for a in b["images"])]
     newest = with_images[-1] if with_images else None
-    write_imager_list(repo, base_url, "os_list-nightly.json",
+    write_imager_list(repo, base_url, "os_list-%s.json" % section,
                       os.path.join(root, newest["version"], "rpi_imager_repo.json") if newest else None,
                       {a: f for a, f in (newest or {}).get("images", {}).items() if a in ("armhf", "arm64")},
-                      "nightly")
+                      section)
     return builds
 
 
@@ -2282,6 +2285,7 @@ def main():
     samples = index_samples(repo, base_url)
     manuals = index_manuals(repo, base_url)
     nightly = index_nightly(repo, base_url)
+    index_nightly(repo, base_url, "preview")
     store_pages = {}
     store = index_store(repo, base_url, store_pages)
     extensions = index_extensions(repo, base_url)

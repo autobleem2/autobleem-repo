@@ -297,3 +297,36 @@ def test_a_newer_incomplete_folder_is_never_the_one_kept(tmp_path):
     assert os.path.isdir(os.path.join(root, finished))
     # still there, untouched - not yet 2 days old
     assert os.path.isdir(in_progress_folder)
+
+
+#*******************************
+# index_nightly(kind="preview"): a feature branch's build (PLATFORM-20) in preview/, the same rules
+#*******************************
+
+def test_a_preview_is_indexed_beside_the_nightly_and_never_touches_it(tmp_path):
+    repo = str(tmp_path)
+    nightly = build_nightly_folder(repo, "v2.0.0-alpha0-5-gabc1234-n111111", when=1000)
+    write_sources(nightly)
+    old = "preview-feature-ab-gui-aaaaaa"
+    new = "preview-feature-ab-gui-bbbbbb"
+    for version, when in ((old, 2000), (new, 3000)):
+        folder = os.path.join(repo, "preview", version)
+        touch_with_sidecar(os.path.join(folder, "autobleem-psc-%s.zip" % version), when)
+        touch_with_sidecar(os.path.join(folder, "autobleem-%s-rpi-armhf.img.xz" % version), when)
+        write_sources(folder)
+    unfinished = os.path.join(repo, "preview", "preview-feature-x-cccccc")
+    touch_with_sidecar(os.path.join(unfinished, "autobleem-psc-preview-feature-x-cccccc.zip"), time.time())
+    mark_incomplete(unfinished)
+
+    builds = repo_index.index_nightly(repo, BASE_URL, "preview")
+
+    assert [b["version"] for b in builds] == [new]
+    assert builds[0]["channel"] == "preview"
+    root = os.path.join(repo, "preview")
+    # the older preview pruned, the one still being published left alone
+    assert sorted(os.listdir(root)) == sorted([new, "preview-feature-x-cccccc", "latest.json"])
+    with open(os.path.join(root, "latest.json"), encoding="utf-8") as f:
+        assert json.load(f)["version"] == new
+    # the nightly is untouched
+    assert os.path.isdir(nightly)
+    assert not os.path.exists(os.path.join(repo, "nightly", "latest.json"))
