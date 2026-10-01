@@ -57,6 +57,14 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
     bugs_source = BugsSource(gh, settings)
     app = FastAPI(title="AutoBleem admin", docs_url=None, redoc_url=None, openapi_url="/admin/api/openapi.json")
 
+    @app.middleware("http")
+    async def never_cached(request: Request, call_next):
+        """The panel shows live data: no browser or proxy may keep an answer or the page itself."""
+        response = await call_next(request)
+        if request.url.path.startswith("/admin"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
     def viewer(request: Request):
         auth = request.headers.get("authorization", "")
         if auth.lower().startswith("bearer "):

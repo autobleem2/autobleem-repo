@@ -13,6 +13,8 @@ _ROW_ID_RE = re.compile(r"^[A-Z]+-?\d+$")
 _BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.S)
 _DONE_RE = re.compile(r"^~~(?P<inner>.*?)~~\s*\*\*done\s+(?P<date>[\d-]+)\*\*", re.S)
 _TEAM_RE = re.compile(r"Team:\s*([^,.()]+)")
+_STATES = ("new", "in progress", "done", "closed")
+_DONE_STATES = ("done", "closed")  # `done` = merged, waiting for the check; `closed` = checked
 _MILESTONE_HEADER_RE = re.compile(r"^\|\s*Milestone\s*\|.*Theme")
 
 
@@ -64,7 +66,8 @@ def _title_and_done(what):
 def parse_todo(markdown_text):
     """`docs/todo.md` -> a list of row dicts `{id, section, title, text, where, size, who, ms, team, done,
     done_date, done_by}`, in file order. A row is `| ID | ... |` (`ID` = an area word, a dash and digits,
-    `RELEASE-1`, since 2026-09-27; the old letter + digits, `R1`, still parses) under the nearest
+    `RELEASE-1`, since 2026-09-27; the old letter + digits, `R1`, still parses; an optional seventh column,
+    `State`: new / in progress / done / closed, decides `done` when present) under the nearest
     `## RELEASE - ...` heading, whose word is the row's `section`; non-row lines (headings, the column header, the `|---|` separator,
     prose) are skipped."""
     rows = []
@@ -81,7 +84,11 @@ def parse_todo(markdown_text):
             continue
         row_id, what, where, size, who, ms = cells[:6]
         title, done, done_date, done_by = _title_and_done(what)
+        state = cells[6].strip().strip("*").strip().lower() if len(cells) > 6 else ""
+        if state in _STATES:  # the State column (since 2026-10-01) is the truth; the strike-through is the old way
+            done = state in _DONE_STATES
         rows.append({
+            "state": state or ("done" if done else "new"),
             "id": row_id,
             "section": section,
             "title": title,

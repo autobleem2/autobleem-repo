@@ -55,7 +55,7 @@ def test_split_cells_plain_row():
 
 def test_parse_todo_row_key_set(todo_rows):
     assert set(todo_rows[0].keys()) == {"id", "section", "title", "text", "where", "size", "who", "ms",
-                                        "team", "done", "done_date", "done_by"}
+                                        "team", "done", "done_date", "done_by", "state"}
 
 
 def test_parse_todo_row_count_and_sections(todo_rows):
@@ -125,6 +125,34 @@ def test_parse_todo_area_word_ids():
             "| ID | What | Where | Size | Who | Ms |\n|---|---|---|---|---|---|\n| HWTEST-12 | z | y | S | tester | a3 |\n")
     rows = parse_todo(text)
     assert [(r["id"], r["section"]) for r in rows] == [("RELEASE-1", "RELEASE"), ("HWTEST-12", "HWTEST")]
+
+
+def test_parse_todo_legacy_rows_get_a_state(todo_rows):
+    assert by_id(todo_rows, "R21")["state"] == "done"
+    assert by_id(todo_rows, "R1")["state"] == "new"
+
+
+def test_parse_todo_state_column_of_2026_10_01():
+    """The hub's todo.md since 2026-10-01: a seventh `State` column (new / in progress / done / closed)."""
+    rows = parse_todo(_read("todo_state.md"))
+    assert [(r["id"], r["state"], r["done"]) for r in rows] == [
+        ("RELEASE-3", "new", False), ("UIREV-40", "in progress", False), ("UIREV-41", "done", True),
+        ("UIREV-2", "closed", True), ("EMU-17", "new", False)]
+    assert by_id(rows, "UIREV-2")["title"].startswith("The d-pad hint arrows are readable")
+    assert by_id(rows, "UIREV-41")["done_date"] is None  # no strike-through, so no date
+    assert by_id(rows, "EMU-17")["ms"] == "EMU-16"  # a typo in the source stays as written
+    assert by_id(rows, "UIREV-40")["ms"] == "alpha1"
+
+
+def test_the_state_column_beats_the_strike_through():
+    text = ("## UIREV - x\n\n| ID | What | Where | Size | Who | Ms | State |\n|---|---|---|---|---|---|---|\n"
+            "| UIREV-1 | ~~**x**~~ **done 2026-09-29** (Hector) | y | S | dev | a2 | in progress |\n")
+    row = parse_todo(text)[0]
+    assert row["state"] == "in progress" and row["done"] is False
+
+
+def test_the_alpha1_milestone_code():
+    assert milestone_code("alpha1") == "a1"
 
 
 # ------------------------------------------------------------------ parse_milestones / milestone_code

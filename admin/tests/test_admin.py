@@ -116,6 +116,13 @@ def browser(user, act=False):
     return h
 
 
+def test_answers_are_never_cached(setup):
+    client, gh, _ = setup
+    for path in ("/admin/api/me", "/admin/api/status", "/admin/api/bugs", "/admin/"):
+        assert client.get(path, headers=browser("bob")).headers["cache-control"] == "no-store", path
+    assert client.get("/admin/api/me").headers["cache-control"] == "no-store"  # an error answer too
+
+
 def test_who_may_look(setup):
     client, gh, _ = setup
     assert client.get("/admin/api/status").status_code == 401

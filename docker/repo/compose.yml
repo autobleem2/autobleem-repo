@@ -44,8 +44,12 @@ services:
     environment:
       AB_REPO_DIR: /srv/repo
       AB_DATA_DIR: /data
+      AB_ADMIN_TEAMS_FILE: /feed/teams.json
     volumes:
       - ${REPO_DIR:-/home/claude/autobleem-repo}:/srv/repo:ro
+      # the Teams tab's private feed: the company copies teams.json here. Only this service mounts it - Caddy
+      # serves /srv/repo alone, so nothing here is reachable from the web.
+      - ${ADMIN_FEED_DIR:-/home/claude/admin-data}:/feed:ro
       - ../../admin/app-key.pem:/run/secrets/app-key.pem:ro
       - admin_data:/data
 
