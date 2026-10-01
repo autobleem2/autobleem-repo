@@ -330,3 +330,17 @@ def test_a_preview_is_indexed_beside_the_nightly_and_never_touches_it(tmp_path):
     # the nightly is untouched
     assert os.path.isdir(nightly)
     assert not os.path.exists(os.path.join(repo, "nightly", "latest.json"))
+
+
+def test_the_page_lists_the_preview_packages_beside_the_nightly(tmp_path):
+    repo = str(tmp_path)
+    write_sources(build_nightly_folder(repo, "v2.0.0-alpha0-5-gabc1234-n111111", when=1000))
+    version = "preview-feature-ab-gui-bbbbbb"
+    folder = os.path.join(repo, "preview", version)
+    touch_with_sidecar(os.path.join(folder, "autobleem-psc-%s.tar.gz" % version), 2000)
+    write_sources(folder)
+    nightly = repo_index.index_nightly(repo, BASE_URL)
+    preview = repo_index.index_nightly(repo, BASE_URL, "preview")
+    page = repo_index.render_index(BASE_URL, [], [], [], [], [], [], [], nightly=nightly, preview=preview)
+    assert "/preview/%s/autobleem-psc-%s.tar.gz" % (version, version) in page
+    assert "v2.0.0-alpha0-5-gabc1234-n111111" in page

@@ -1166,7 +1166,7 @@ def index_nightly(repo, base_url, section="nightly"):
     releases/ (latest.json, unstable.json).
     section="preview" (PLATFORM-20) indexes preview/<version>/ the same way - a feature branch's build, started from
     the admin panel: preview/latest.json (psc kept: a console on the Preview channel reads it) and
-    rpi-imager/os_list-preview.json. The download page does not list it; its link is given to whoever tests it."""
+    rpi-imager/os_list-preview.json. The download page lists the newest one beside the nightly."""
     root = os.path.join(repo, section)
     if not os.path.isdir(root):
         return []
@@ -1534,7 +1534,7 @@ def folded_inputs(summary, body):
 
 def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc_cores, samples=None, psc_libs=None,
                  psc_apps=None, psc_bios=None, pc=None, pcsx=None, manuals=None, psc_kernel=None, nightly=None,
-                 store=None):
+                 store=None, preview=None):
     """The page: a tab per platform, each leading with what a user installs from (the installer, the images,
     the packages) in one table across the three channels - the latest release, the one pre-release, the
     newest development build - and, folded away under it, the build inputs the installers, the image build and
@@ -1553,6 +1553,10 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
         channels.append((pre[-1], "pre", pre[-1]["version"]))
     if nightly:
         channels.append((nightly[-1], "dev", "dev " + nightly[-1]["version"]))
+    # a feature branch's build (PLATFORM-20, started from the admin panel): the same tables, its own pill text
+    preview = [b for b in (preview or []) if b.get("files") or b.get("images")]
+    if preview:
+        channels.append((preview[-1], "dev", preview[-1]["version"]))
 
     def release_rows(kinds, short=None):
         """the packages of these kinds in each channel - release, pre-release, development build"""
@@ -1565,12 +1569,14 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
         return out
 
     def dev_images(titles):
-        """the newest development build's images, when that run made any (index_nightly: armhf, arm64, pc-i386)"""
-        if not nightly:
-            return []
-        dev = nightly[-1]
-        return [row(title, dev["images"][key], "dev " + dev["version"], "dev")
-                for key, title in titles if key in (dev.get("images") or {})]
+        """the newest development build's images, when that run made any (index_nightly: armhf, arm64, pc-i386),
+        and the newest preview's"""
+        out = []
+        for dev, text in ([(nightly[-1], "dev " + nightly[-1]["version"])] if nightly else []) + \
+                         ([(preview[-1], preview[-1]["version"])] if preview else []):
+            out += [row(title, dev["images"][key], text, "dev")
+                    for key, title in titles if key in (dev.get("images") or {})]
+        return out
 
     def older():
         if len(stable) > 1:
@@ -1586,7 +1592,7 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
     out.append("<main>")
     out.append("<p class=\"lede\">Pick your platform. <b>Release</b> is the tested build, <b>pre-release</b> the "
                "next one being tested, <b>dev</b> the newest development build (nightly or on request - it may "
-               "not work). Every file has a <code>.sha256</code> next to it; "
+               "not work; <b>preview-...</b> a build of work in progress, for whoever tests it). Every file has a <code>.sha256</code> next to it; "
                "<a href=\"/releases/latest.json\">releases/latest.json</a> is the machine-readable list.</p>")
 
     # ---- PlayStation Classic ----
@@ -2285,7 +2291,7 @@ def main():
     samples = index_samples(repo, base_url)
     manuals = index_manuals(repo, base_url)
     nightly = index_nightly(repo, base_url)
-    index_nightly(repo, base_url, "preview")
+    preview = index_nightly(repo, base_url, "preview")
     store_pages = {}
     store = index_store(repo, base_url, store_pages)
     extensions = index_extensions(repo, base_url)
@@ -2296,7 +2302,8 @@ def main():
     pages = [("index.html", render_splash(base_url, nightly)),
              (os.path.join("repository", "index.html"),
               render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc_cores, samples,
-                           psc_libs, psc_apps, psc_bios, pc, pcsx, manuals, psc_kernel, nightly, store_pages)),
+                           psc_libs, psc_apps, psc_bios, pc, pcsx, manuals, psc_kernel, nightly, store_pages,
+                           preview)),
              (os.path.join("repository", "rpi-install.html"), render_rpi_install(base_url, images)),
              (os.path.join("repository", "pc-install.html"), render_pc_install(base_url, pc_images)),
              ("rpi-install.html", render_moved("rpi-install.html")),
