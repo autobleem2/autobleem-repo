@@ -109,3 +109,23 @@ def test_assets_are_staged_from_the_checked_in_set(tmp_path):
     wanted |= {"emblem.png", "emblem@2x.png", "logo.png", "logo@2x.png", "icon.png", "og.png",
                "button-support.png", "button-support@2x.png", "OFL.txt"}
     assert wanted <= names, wanted - names
+
+
+def test_the_icon_links_carry_the_icons_hash_and_the_favicon_is_staged(tmp_path):
+    import hashlib
+    icon = os.path.join(TOOLS, "site-assets", "icon.png")
+    assert hashlib.sha1(open(icon, "rb").read()).hexdigest()[:8] == repo_index.ICON_REV
+    for page in (repo_index.render_splash(BASE_URL, []), repo_index.page_head("t", "tag")):
+        assert 'href="/assets/icon.png?v=%s"' % repo_index.ICON_REV in page
+        assert 'href="/favicon.ico?v=%s"' % repo_index.ICON_REV in page
+    out = str(tmp_path / "assets")
+    subprocess.run([sys.executable, os.path.join(TOOLS, "repo_assets.py"), out], check=True, capture_output=True)
+    assert open(os.path.join(out, "favicon.ico"), "rb").read(4) == b"\x00\x00\x01\x00"
+
+
+def test_the_framed_boxes_use_one_ring_and_the_support_hover_keeps_its_box():
+    css = repo_index.PAGE_CSS
+    assert "box-shadow:inset 0 0 0 1px" not in css  # the old frames that lost an edge
+    assert "polygon(evenodd" in css
+    assert "a.support:hover img{content:" not in css  # the hover picture was squeezed into the 252x48 box
+    assert "a.support:after" in css and "width:272px;height:68px" in css

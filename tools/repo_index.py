@@ -68,6 +68,12 @@ SPLASH_STATUS = [
     ("First preview tagged", "the first build with a version number", "pre", "v2.0.0-alpha0"),
     ("Next milestone", "in progress", "", "alpha1"),
 ]
+# the page icon: /assets/icon.png is cached for a day under one URL, so the link carries the icon's content hash
+# (the first 8 hex digits of its sha1 - tests/test_site_pages.py checks it against tools/site-assets/icon.png;
+# change both when the icon changes); /favicon.ico is what a browser asks for by itself (publish copies it there)
+ICON_REV = "a3f185d9"
+ICON_LINKS = ('<link rel="icon" href="/assets/icon.png?v=%s" type="image/png"><link rel="shortcut icon" '
+              'href="/favicon.ico?v=%s">' % (ICON_REV, ICON_REV))
 # the owner's Ko-fi page: the splash's Support button links it; empty = no button
 KOFI_URL = "https://ko-fi.com/autobleem"
 
@@ -1281,12 +1287,18 @@ header.top nav a:hover,header.top nav a.on{color:var(--cyan);text-decoration:non
 .hero img{height:72%;width:auto;margin-left:auto;display:block}
 
 main{max-width:68rem;margin:0 auto 3rem;padding:0 1rem}
-/* the framed cut box: the box's own background is the LINE colour; its ::before, 1 px in, carries the same
-   polygon and the fill - so the 1 px frame follows the cut diagonals too */
-.panel,.notice,details.inputs,.status{position:relative;isolation:isolate;background:var(--line)}
-.panel:before,.notice:before,details.inputs:before,.status:before{content:"";position:absolute;inset:1px;z-index:-1;
-  pointer-events:none;background:var(--fill,linear-gradient(180deg,var(--panel-top),var(--panel-bot)));
-  clip-path:polygon(0 0,calc(100% - var(--cut) + .41px) 0,100% calc(var(--cut) - .41px),100% 100%,calc(var(--cut) - .41px) 100%,0 calc(100% - var(--cut) + .41px))}
+/* the 1 px frame of a cut box: the box's ::after is a ring - the outer cut polygon with the same polygon one px
+   in cut out of it (evenodd), painted --ring. One shape in one coordinate space, so the frame is whole on the
+   straight edges and the diagonals at any size (a box-shadow or a second layer 1 px in snapped to other pixels
+   than the clip and lost an edge). --cut is the box's own cut; every ring box sets --ring and --cut. */
+.panel,.notice,details.inputs,.status,.chan,td.file a,a.dl,button.copy,nav.subtabs a,a.big{position:relative}
+.panel:after,.notice:after,details.inputs:after,.status:after,.chan:after,td.file a:after,a.dl:after,button.copy:after,
+nav.subtabs a:after,a.big:after{content:"";position:absolute;inset:0;pointer-events:none;background:var(--ring);
+  clip-path:polygon(evenodd,0 0,calc(100% - var(--cut)) 0,100% var(--cut),100% 100%,var(--cut) 100%,0 calc(100% - var(--cut)),0 0,
+    1px 1px,calc(100% - 1px - var(--cut) + .59px) 1px,calc(100% - 1px) calc(1px + var(--cut) - .59px),calc(100% - 1px) calc(100% - 1px),
+    calc(1px + var(--cut) - .59px) calc(100% - 1px),1px calc(100% - 1px - var(--cut) + .59px),1px 1px)}
+.panel,.notice,details.inputs,.status{isolation:isolate;--ring:var(--line);
+  background:var(--fill,linear-gradient(180deg,var(--panel-top),var(--panel-bot)))}
 .panel{padding:1.1rem 1.3rem;margin:1rem 0}
 .lede{color:var(--dim);margin:1.1rem 0 .4rem;font-size:.98rem}
 .lede b{color:var(--ink);font-weight:600}
@@ -1312,16 +1324,16 @@ td.what img.icon{float:left;width:44px;height:44px;object-fit:contain;margin:.1r
   clip-path:polygon(0 0,calc(100% - var(--cut-s)) 0,100% var(--cut-s),100% 100%,var(--cut-s) 100%,0 calc(100% - var(--cut-s)))}
 td.file{white-space:nowrap}
 td.file a,a.dl{display:inline-block;padding:.22rem .8rem;font-size:.88rem;font-weight:600;color:var(--cyan);
-  background:rgba(54,217,224,.1);box-shadow:inset 0 0 0 1px var(--line);
-  clip-path:polygon(0 0,calc(100% - var(--cut-s)) 0,100% var(--cut-s),100% 100%,var(--cut-s) 100%,0 calc(100% - var(--cut-s)))}
-td.file a:hover,a.dl:hover{background:rgba(255,70,170,.16);box-shadow:inset 0 0 0 1px var(--magenta);color:#fff;text-decoration:none}
+  background:rgba(54,217,224,.1);--ring:var(--line);--cut:var(--cut-s);
+  clip-path:polygon(0 0,calc(100% - var(--cut)) 0,100% var(--cut),100% 100%,var(--cut) 100%,0 calc(100% - var(--cut)))}
+td.file a:hover,a.dl:hover{background:rgba(255,70,170,.16);--ring:var(--magenta);color:#fff;text-decoration:none}
 td.file a:before{content:"\\2193  "}
 td.size{white-space:nowrap;color:var(--dim);text-align:right}
 th.size{text-align:right}
 td.when{white-space:nowrap;color:var(--dim);font-size:.85em}
 .chan{display:inline-block;white-space:nowrap;font-size:.76rem;font-weight:600;padding:.06rem .55rem;letter-spacing:.02em;
-  color:var(--dim);box-shadow:inset 0 0 0 1px currentColor;
-  clip-path:polygon(0 0,calc(100% - 5px) 0,100% 5px,100% 100%,5px 100%,0 calc(100% - 5px))}
+  color:var(--dim);--ring:currentColor;--cut:5px;
+  clip-path:polygon(0 0,calc(100% - var(--cut)) 0,100% var(--cut),100% 100%,var(--cut) 100%,0 calc(100% - var(--cut)))}
 .chan.rel{color:var(--rel)}.chan.pre{color:var(--pre)}.chan.dev{color:var(--dev)}
 .badge{display:inline-block;font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:.02rem .45rem;
   background:rgba(255,138,101,.16);color:var(--warn);margin-left:.4rem;vertical-align:1px}
@@ -1329,7 +1341,7 @@ td.when{white-space:nowrap;color:var(--dim);font-size:.85em}
 .older{color:var(--dim);font-size:.9rem}
 
 /* Build inputs, folded */
-details.inputs{margin:1rem 0;background:var(--line-soft);--fill:rgba(18,22,28,.72)}
+details.inputs{margin:1rem 0;--ring:var(--line-soft);--fill:rgba(18,22,28,.72)}
 details.inputs>summary{cursor:pointer;padding:.75rem 1.3rem;color:var(--dim);list-style:none;display:flex;gap:.6rem;align-items:baseline}
 details.inputs>summary::-webkit-details-marker{display:none}
 details.inputs>summary:before{content:"\\25B8";color:var(--cyan);transition:transform .15s}
@@ -1350,10 +1362,10 @@ body.js section.tab.active{display:block}
 body.js section.tab h2.plat{display:none}
 nav.subtabs{display:flex;flex-wrap:wrap;gap:.4rem;margin:1rem 0 .4rem}
 nav.subtabs a{padding:.28rem .95rem;color:var(--steel);font-size:.9rem;font-weight:600;background:rgba(18,22,28,.6);
-  box-shadow:inset 0 0 0 1px var(--line-soft);
-  clip-path:polygon(0 0,calc(100% - var(--cut-s)) 0,100% var(--cut-s),100% 100%,var(--cut-s) 100%,0 calc(100% - var(--cut-s)))}
+  --ring:var(--line-soft);--cut:var(--cut-s);
+  clip-path:polygon(0 0,calc(100% - var(--cut)) 0,100% var(--cut),100% 100%,var(--cut) 100%,0 calc(100% - var(--cut)))}
 nav.subtabs a:hover{color:#fff;text-decoration:none}
-nav.subtabs a.active{color:#fff;background:rgba(255,70,170,.14);box-shadow:inset 0 0 0 1px var(--magenta)}
+nav.subtabs a.active{color:#fff;background:rgba(255,70,170,.14);--ring:var(--magenta)}
 h3.subtab{font-size:1.15rem;color:#fff;margin:1.4rem 0 .2rem}
 body.js section.subtab{display:none}
 body.js section.subtab.active{display:block}
@@ -1361,18 +1373,18 @@ body.js section.subtab h3.subtab{display:none}
 
 /* something to copy into another program */
 .notice{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .8rem;margin:.8rem 0 1rem;padding:.75rem 1rem .75rem 1.2rem;
-  --fill:linear-gradient(90deg,#1d3a42,#1f2a33 60%)}
-.notice:after{content:"";position:absolute;left:0;top:0;bottom:var(--cut);width:3px;background:var(--cyan)}
+  --fill:linear-gradient(90deg,#1d3a42,#1f2a33 60%);
+  background:linear-gradient(var(--cyan),var(--cyan)) 0 0/3px calc(100% - var(--cut)) no-repeat,var(--fill)}
 .notice .label{flex-basis:100%;color:var(--dim);font-size:.88rem}
 .notice .label b{color:var(--ink);font-weight:600}
 .notice .nrow{display:flex;align-items:center;gap:.8rem;width:100%}
 .notice .nrow .chan{min-width:5.2rem;text-align:center}
 .notice code{flex:1;min-width:0;overflow-wrap:anywhere;font-size:.9rem;padding:.35rem .6rem}
 button.copy{font:inherit;font-size:.86rem;font-weight:600;color:var(--cyan);background:rgba(54,217,224,.1);border:0;
-  box-shadow:inset 0 0 0 1px var(--line);padding:.3rem .95rem;cursor:pointer;
-  clip-path:polygon(0 0,calc(100% - var(--cut-s)) 0,100% var(--cut-s),100% 100%,var(--cut-s) 100%,0 calc(100% - var(--cut-s)))}
-button.copy:hover{background:rgba(255,70,170,.16);box-shadow:inset 0 0 0 1px var(--magenta);color:#fff}
-button.copy.done{color:var(--rel);box-shadow:inset 0 0 0 1px var(--rel)}
+  --ring:var(--line);--cut:var(--cut-s);padding:.3rem .95rem;cursor:pointer;
+  clip-path:polygon(0 0,calc(100% - var(--cut)) 0,100% var(--cut),100% 100%,var(--cut) 100%,0 calc(100% - var(--cut)))}
+button.copy:hover{background:rgba(255,70,170,.16);--ring:var(--magenta);color:#fff}
+button.copy.done{color:var(--rel);--ring:var(--rel)}
 footer{color:var(--dim);font-size:.8rem;text-align:center;margin-top:2rem;padding:0 1rem}
 
 /* NEW - the splash page (/) */
@@ -1392,15 +1404,20 @@ body.splash main{flex:1;max-width:46rem;text-align:center;padding-top:clamp(1.5r
 .status li .dot{width:8px;height:8px;border-radius:50%;background:var(--rel);box-shadow:0 0 8px var(--rel);flex:none}
 .status li .dot.next{background:transparent;box-shadow:inset 0 0 0 2px var(--pre)}
 a.big{display:inline-flex;align-items:center;gap:.7rem;padding:.95rem 2.1rem;font-size:1.15rem;font-weight:600;color:#fff;
-  letter-spacing:.02em;background:linear-gradient(180deg,#ff5cb6,#d9358f);box-shadow:inset 0 0 0 1px rgba(255,255,255,.25);
+  letter-spacing:.02em;background:linear-gradient(180deg,#ff5cb6,#d9358f);--ring:rgba(255,255,255,.25);
   --cut:14px}
 a.big:hover{background:linear-gradient(180deg,#ff73c1,#e8409c);text-decoration:none}
 a.big:before{content:"\\2193";font-size:1.25rem}
 .splash .thanks{color:var(--steel);margin:1.8rem auto .9rem;max-width:32rem;font-size:.95rem}
 .splash .thanks b{color:#fff;font-weight:600}
-a.support{display:inline-block;line-height:0}
+a.support{position:relative;display:inline-block;width:252px;height:48px;line-height:0}
 a.support img{width:252px;height:48px}
-a.support:hover img{content:url(/assets/button-support-hover.png)}
+a.support:after{content:"";position:absolute;left:-10px;top:-10px;width:272px;height:68px;opacity:0;pointer-events:none;
+  background:url(/assets/button-support-hover.png) 0 0/272px 68px no-repeat;
+  background-image:-webkit-image-set(url(/assets/button-support-hover.png) 1x,url(/assets/button-support-hover@2x.png) 2x);
+  background-image:image-set(url(/assets/button-support-hover.png) 1x,url(/assets/button-support-hover@2x.png) 2x)}
+a.support:hover:after{opacity:1}
+a.support:hover img{opacity:0}
 .splash .more{margin-top:1.4rem;font-size:.9rem;color:var(--dim)}
 .splash .more a{margin:0 .5rem}
 
@@ -1433,14 +1450,14 @@ def page_head(title, tagline):
     e = html.escape
     return ("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-            "<title>%s</title><link rel=\"icon\" href=\"/assets/icon.png\"><style>%s</style>%s</head><body>"
+            "<title>%s</title>%s<style>%s</style>%s</head><body>"
             "<header class=\"top\"><div class=\"bar\"><a class=\"brand\" href=\"/\"><img src=\"/assets/emblem.png\" "
             "srcset=\"/assets/emblem@2x.png 2x\" alt=\"\">AutoBleem 2 <span>Downloads</span></a><nav>"
             "<a href=\"/store/\">Store</a><a href=\"/repository/#manuals\">Manual</a><a href=\"/releases/\">All files</a>"
             "<a href=\"https://github.com/autobleem2\">GitHub</a></nav></div></header>"
             "<div class=\"hero\"><div class=\"in\"><p>%s</p><img src=\"/assets/logo.png\" "
             "srcset=\"/assets/logo@2x.png 2x\" alt=\"AutoBleem 2\"></div></div>"
-            % (e(title), PAGE_CSS, COPY_SCRIPT, e(tagline)))
+            % (e(title), ICON_LINKS, PAGE_CSS, COPY_SCRIPT, e(tagline)))
 
 
 # the Copy buttons (imager_notice): the clipboard API on the https site, a hidden textarea where it is missing
@@ -2202,7 +2219,7 @@ def render_splash(base_url, nightly=None):
             "<meta name=\"description\" content=\"AutoBleem 2 - the game launcher for the PlayStation Classic, the Raspberry Pi "
             "and the PC. Early builds are out.\">\n"
             "<meta property=\"og:title\" content=\"AutoBleem 2 is coming\"><meta property=\"og:image\" content=\"%s/assets/og.png\">\n"
-            "<link rel=\"icon\" href=\"/assets/icon.png\">\n<style>%s</style>\n"
+            "%s\n<style>%s</style>\n"
             "</head><body class=\"splash\">\n"
             "<header class=\"top\"><div class=\"bar\"><a class=\"brand\" href=\"/\"><img src=\"/assets/emblem.png\" "
             "srcset=\"/assets/emblem@2x.png 2x\" alt=\"\">AutoBleem 2</a><nav>\n"
@@ -2224,7 +2241,7 @@ def render_splash(base_url, nightly=None):
             "</main>\n"
             "<footer><p>AutoBleem 2 is free and open source. PlayStation is a trademark of Sony Interactive Entertainment; "
             "AutoBleem is not affiliated with Sony.</p></footer>\n"
-            "</body></html>\n" % (base_url, PAGE_CSS, "\n      ".join(rows), support))
+            "</body></html>\n" % (base_url, ICON_LINKS, PAGE_CSS, "\n      ".join(rows), support))
 
 
 def render_moved(name):

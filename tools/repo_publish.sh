@@ -306,6 +306,7 @@ set -e
 cd "$REPO_DIR"
 $( [ "$KIND" = nightly ] && echo "rm -f \"$DEST/.incomplete\" # the build's last publish: it is a nightly now" )
 if [ -f assets/icon.png ]; then mkdir -p rpi-imager && cp assets/icon.png rpi-imager/icon.png; fi
+if [ -f assets/favicon.ico ]; then cp assets/favicon.ico favicon.ico; fi
 if ! python3 .tools/repo_index.py . --base-url "$AB_REPO_URL"; then
     if [ -f .tools/repo_index.prev.py ]; then
         # the base and its revision go back with the copy: left at the new version, the next publish's merge
