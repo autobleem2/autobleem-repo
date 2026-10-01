@@ -5,6 +5,7 @@ contents API - the same fake `test_roadmap_source.py` uses for the roadmap tab.
 """
 import base64
 import logging
+import os
 
 from app.bugs import filter_bugs, matches_platform, matches_state, parse_bugs, sort_bugs
 from app.bugs_source import BugsSource
@@ -59,7 +60,8 @@ def test_parses_every_column():
     b1 = bugs[0]
     assert b1 == {"id": "BUG-1", "number": 1, "title": "A pad wizard step never finishes",
                   "platforms": ["psc"], "severity": "major", "state": "confirmed", "duplicate_of": None,
-                  "found": "console session, 2026-09-27", "fix_id": "TOOLS-9"}
+                  "found": "console session, 2026-09-27", "fix_id": "TOOLS-9", "fix_ids": ["TOOLS-9"],
+                  "fix_note": None}
 
 
 def test_all_platform():
@@ -89,21 +91,81 @@ def test_non_bug_rows_are_ignored_quietly(caplog):
     assert not caplog.records
 
 
-def test_malformed_rows_are_skipped_and_logged(caplog):
+def test_odd_values_are_kept_not_dropped(caplog):
+    """A value the parser does not know no longer costs the whole row (that hid 34 of 41 bugs on the panel)."""
     rows = [
         "| BUG-90 | bad platform | mars | major | open | somewhere | - |",
-        "| BUG-91 | bad severity | psc | critical | open | somewhere | - |",
-        "| BUG-92 | bad state | psc | major | in-progress | somewhere | - |",
-        "| BUG-93 | bad fix cell | psc | major | open | somewhere | see TOOLS-9 |",
-        "| BUG-94 | too few columns | psc | major | open |",
+        "| BUG-91 | odd severity | psc | critical | open | somewhere | - |",
+        "| BUG-92 | odd state | psc | major | in-limbo | somewhere | - |",
+        "| BUG-93 | a sentence as the fix | psc | major | open | somewhere | see TOOLS-9 |",
     ]
-    text = HEADER + "\n".join(rows) + "\n" + "| BUG-95 | a good row after the bad ones | psc | minor | open | x | - |\n"
+    with caplog.at_level(logging.WARNING):
+        bugs = parse_bugs(HEADER + "\n".join(rows) + "\n")
+    assert [b["id"] for b in bugs] == ["BUG-90", "BUG-91", "BUG-92", "BUG-93"]
+    assert bugs[0]["platforms"] == []
+    assert bugs[1]["severity"] == "critical"
+    assert bugs[2]["state"] == "in-limbo"
+    assert (bugs[3]["fix_id"], bugs[3]["fix_note"]) == (None, "see TOOLS-9")
+    assert not caplog.records
+
+
+def test_a_row_with_too_few_cells_is_skipped_and_logged(caplog):
+    text = HEADER + "| BUG-94 | too few columns | psc | major |\n| BUG-95 | fine | psc | minor | new | x | - |\n"
     with caplog.at_level(logging.WARNING):
         bugs = parse_bugs(text)
     assert [b["id"] for b in bugs] == ["BUG-95"]
-    # one warning per malformed row that had 7 cells to begin with (BUG-94 has too few cells - silently
-    # skipped like any other short row, same as a non-bug line)
-    assert len(caplog.records) == 4
+    assert len(caplog.records) == 1
+
+
+def _today():
+    with open(os.path.join(os.path.dirname(__file__), "fixtures", "bugs_today.md"), encoding="utf-8") as f:
+        return {b["id"]: b for b in parse_bugs(f.read())}
+
+
+def test_todays_format_loses_no_row(caplog):
+    with caplog.at_level(logging.WARNING):
+        bugs = _today()
+    assert len(bugs) == 13
+    assert not caplog.records
+
+
+def test_todays_four_states():
+    bugs = _today()
+    assert {b["state"] for b in bugs.values()} == {"new", "in progress", "done", "closed", "duplicate"}
+    open_bugs, closed_bugs = sort_bugs(list(bugs.values()))
+    # `done` still waits for the check, so it stays in the open list; blocker > major > minor > trivial
+    assert [b["id"] for b in open_bugs] == ["BUG-1", "BUG-6", "BUG-21", "BUG-23", "BUG-30", "BUG-9",
+                                           "BUG-13", "BUG-25", "BUG-33"]
+    assert [b["id"] for b in closed_bugs] == ["BUG-11", "BUG-12", "BUG-38", "BUG-40"]
+
+
+def test_todays_platform_cells_with_notes():
+    bugs = _today()
+    assert bugs["BUG-9"]["platforms"] == ["psc", "rpi", "pcusb", "win"]
+    assert bugs["BUG-25"]["platforms"] == ["win"]
+    assert bugs["BUG-30"]["platforms"] == ["psc"]
+    assert bugs["BUG-33"]["platforms"] == ["rpi"]
+
+
+def test_todays_fix_cells():
+    bugs = _today()
+    assert (bugs["BUG-21"]["fix_id"], bugs["BUG-21"]["fix_ids"]) == ("CONSOLE-13", ["CONSOLE-13", "CONSOLE-12"])
+    assert (bugs["BUG-21"]["fix_note"]) is None
+    assert (bugs["BUG-23"]["fix_id"], bugs["BUG-23"]["fix_note"]) == (None, "autobleem-core 8e50061")
+    assert bugs["BUG-11"]["fix_note"] == "wontfix"
+    assert (bugs["BUG-12"]["fix_id"], bugs["BUG-12"]["fix_note"]) == ("EMU-8", "[EMU-8](todo.md), wontfix")
+    assert bugs["BUG-13"]["fix_id"] is None and bugs["BUG-13"]["fix_note"] is None
+
+
+def test_todays_short_row_and_trivial_severity():
+    bugs = _today()
+    assert bugs["BUG-33"]["state"] == "done" and bugs["BUG-33"]["found"] == "" and bugs["BUG-33"]["fix_id"] is None
+    assert bugs["BUG-38"]["severity"] == "trivial"
+
+
+def test_a_closed_bug_whose_fix_cell_says_duplicate():
+    bug = _today()["BUG-40"]
+    assert (bug["state"], bug["duplicate_of"]) == ("duplicate", "BUG-13")
 
 
 def test_sort_open_first_by_severity_then_number():

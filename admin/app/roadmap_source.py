@@ -5,12 +5,24 @@ of it - the Program Manager writes status.json, the teams keep todo.md.
 import base64
 import json
 import re
+from datetime import datetime, timedelta, timezone
 
 from .github import GitHubError
 
 MAIN_REPO = "autobleem-main"
 BRANCH = "develop"
 TTL = 60
+# status.json is written by hand (the Program Manager's status pushes were retired); past this age it is not "now"
+STATUS_MAX_AGE = timedelta(hours=24)
+
+
+def _parse_when(text):
+    """An ISO time with an offset as an aware datetime, or None when it is missing or unreadable."""
+    try:
+        when = datetime.fromisoformat(str(text))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
 # a how-to page for something the owner does himself (decisions.md, "Owner tasks come with a how-to"):
 # autobleem-main/howto/<name>.html, named in status.json as "howto/<name>.html"
 HOWTO = re.compile(r"^howto/([a-z0-9][a-z0-9-]{0,63})\.html$")
@@ -33,8 +45,10 @@ class RoadmapSource:
             return base64.b64decode(reply.get("content", "")).decode("utf-8")
         return self.gh.cached("main:" + path, TTL, ask)
 
-    def teams(self):
-        """status.json as the page wants it; {"status": None, ...} when there is none yet or it is unreadable."""
+    def teams(self, now=None):
+        """status.json as the page wants it; {"status": None, ...} when there is none yet, it is unreadable, or
+        it is older than `STATUS_MAX_AGE` (nothing writes it any more - old teams shown as current would
+        mislead; the reason says so and the page prints it)."""
         raw = self.text("status.json")
         if raw is None:
             return {"status": None, "reason": "no status.json yet"}
@@ -44,6 +58,12 @@ class RoadmapSource:
             return {"status": None, "reason": "status.json is not valid JSON: %s" % e}
         if not isinstance(data, dict) or data.get("schema") != 1:
             return {"status": None, "reason": "status.json has an unknown schema"}
+        written = _parse_when(data.get("written_at"))
+        now = now or datetime.now(timezone.utc)
+        if written is not None and now - written > STATUS_MAX_AGE:
+            return {"status": None, "written_at": data.get("written_at", ""),
+                    "reason": "no source: status.json was last written %s and nothing updates it any more"
+                              % str(data.get("written_at", ""))[:10]}
         return {"status": {
             "written_at": data.get("written_at", ""),
             "written_by": data.get("written_by", ""),

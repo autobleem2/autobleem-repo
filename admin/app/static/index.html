@@ -91,9 +91,9 @@ label{white-space:nowrap;margin-right:.8rem}
 #bugsClosedDetails summary{cursor:pointer;color:var(--dim);font-size:.9rem;padding:.3rem 0}
 #bugsClosedDetails summary:hover{color:#fff}
 #bugsClosedDetails[open] summary{margin-bottom:.3rem}
-.sev-blocker{color:var(--bad)}.sev-major{color:var(--warn)}.sev-minor{color:var(--dim)}
-.bstate-open,.bstate-confirmed{color:var(--pre)}.bstate-fixing{color:var(--cyan)}
-.bstate-fixed-untested{color:var(--dev)}.bstate-closed{color:var(--rel)}
+.sev-blocker{color:var(--bad)}.sev-major{color:var(--warn)}.sev-minor,.sev-trivial{color:var(--dim)}
+.bstate-open,.bstate-confirmed,.bstate-new{color:var(--pre)}.bstate-fixing,.bstate-in-progress{color:var(--cyan)}
+.bstate-fixed-untested,.bstate-done{color:var(--dev)}.bstate-closed{color:var(--rel)}
 .bstate-wontfix,.bstate-duplicate{color:var(--dim)}
 /* R27 - the roadmap tab */
 .needs{margin:0;padding-left:1.1rem}.needs li{margin:.25rem 0}.needs .kind{font-size:.75rem;color:var(--pre);margin-right:.4rem}
@@ -178,6 +178,8 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
       <h2>Bugs <small id="bugCount"></small></h2>
       <div class="row">
         <select id="bugState"><option value="">every state</option>
+          <option value="new">new</option><option value="in progress">in progress</option>
+          <option value="done">done</option>
           <option value="open">open</option><option value="confirmed">confirmed</option>
           <option value="fixing">fixing</option><option value="fixed-untested">fixed-untested</option>
           <option value="closed">closed</option><option value="wontfix">wontfix</option>
@@ -589,7 +591,7 @@ async function loadStore() {
 }
 
 // -------------------------------------------------------------------------------- Roadmap tab (R27)
-const MS = [["a2", "alpha2"], ["a3", "alpha3"], ["a4", "alpha4"], ["b1", "beta1"], ["rc", "rc"], ["later", "later"]];
+const MS = [["alpha1", "alpha1"], ["a2", "alpha2"], ["a3", "alpha3"], ["a4", "alpha4"], ["b1", "beta1"], ["rc", "rc"], ["later", "later"]];
 let roadmapData = null, teamsData = null, openRow = null, ownerDone = new Map();
 function msKey(v) {
   v = (v || "").toLowerCase().replace(/\*/g, "").trim();
@@ -771,7 +773,7 @@ function bugRow(b) {
     el("td", {}, b.title),
     el("td", {}, b.platforms.join(", ")),
     el("td", {class: "sev-" + b.severity}, b.severity),
-    el("td", {class: "bstate-" + b.state}, b.state === "duplicate" ? "duplicate of " + b.duplicate_of : b.state),
+    el("td", {class: "bstate-" + b.state.replace(/ /g, "-")},b.state === "duplicate" ? "duplicate of " + b.duplicate_of : b.state),
     el("td", {class: "when"}, b.found),
     el("td", {}, b.fix_id ? el("a", {href: "#roadmap", onclick: () => {
         for (const id of ["taskQ", "taskMs", "taskTeam", "taskSec", "taskState"]) document.getElementById(id).value = "";
@@ -779,7 +781,9 @@ function bugRow(b) {
         openRow = b.fix_id;
         location.hash = "roadmap"; showTab("roadmap");
         if (roadmapData) renderRoadmap();
-      }}, b.fix_id) : el("span", {class: "dim"}, "-")));
+      }}, b.fix_id) : null,
+      b.fix_note ? el("small", {}, (b.fix_id ? " " : "") + b.fix_note) : null,
+      b.fix_id || b.fix_note ? null : el("span", {class: "dim"}, "-")));
 }
 function renderBugs() {
   if (!bugsData) return;
