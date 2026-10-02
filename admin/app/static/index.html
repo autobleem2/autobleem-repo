@@ -143,6 +143,9 @@ input[type=checkbox]{accent-color:var(--cyan)}
 .bstate-wontfix,.bstate-duplicate{color:var(--dim)}
 /* R27 - the roadmap tab */
 .needs{margin:0;padding-left:1.1rem}.needs li{margin:.25rem 0}.needs li::marker{color:var(--magenta)}
+.needs li.calm{color:var(--rel);list-style:none;margin-left:-1.1rem}
+.needs li.later{list-style:none;margin:.7rem 0 0 -1.1rem;font-size:.88rem}
+.needs li small{display:block;color:var(--dim);font-size:.82rem}
 .needs .kind{font-size:.72rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--pre);margin-right:.4rem}
 .ms{cursor:pointer}.ms:hover{--ring:var(--line)}.ms.sel{--ring:var(--magenta);background:rgba(255,70,170,.08)}
 .ms .gate{color:var(--dim);font-size:.88rem;margin:.2rem 0 .3rem}
@@ -738,6 +741,9 @@ function renderTeams() {
       ? "Budget: 5-hour " + u.h5_pct + "% · weekly " + u.week_pct + "%" +
         (u.pace_pct_per_h != null ? " · pace " + u.pace_pct_per_h + "%/h" : "") +
         (u.stop_day ? " · stop day " + u.stop_day : "") : "";
+    for (const q of st.questions || [])
+      needs.append(el("li", {}, el("span", {class: "kind"}, "question"), q.question,
+        el("small", {}, "from " + q.from + " · added " + q.added + (q.options ? " · " + q.options : ""))));
     for (const n of st.needs_owner)
       needs.append(el("li", {}, el("span", {class: "kind"}, n.kind), el("code", {class: "tid"}, n.id), " ", n.what,
         n.howto ? el("button", {type: "button", class: "howto", title: "How to do it", "aria-label": "How to do it",
@@ -749,15 +755,16 @@ function renderTeams() {
   const listed = new Set(st ? st.needs_owner.map(n => n.id) : []);
   const mine = roadmapData ? roadmapData.rows.filter(r => !r.done && (r.who || "").toLowerCase().includes("owner") &&
                                                       !listed.has(r.id)) : [];
-  for (const r of mine.slice(0, 5))
-    needs.append(el("li", {}, el("span", {class: "kind"}, "todo"), el("code", {class: "tid"}, r.id), " ", r.title));
-  if (mine.length > 5) needs.append(el("li", {class: "dim"}, "and " + (mine.length - 5) + " more todo rows for you - ",
+  // right now = an open question or a session; the todo rows that name the owner are not "now", only a link
+  if (!needs.children.length) needs.append(el("li", {class: st ? "calm" : "dim"},
+    st ? "Nothing is waiting for you right now - no open question, no session."
+       : "Unknown - the Teams feed is not running, so open questions and sessions cannot be shown."));
+  if (mine.length) needs.append(el("li", {class: "dim later"}, mine.length + " todo rows name you (for later, not now) - ",
     el("button", {type: "button", class: "link", onclick: () => {
       // every other filter off, or a team/section picked earlier hides the owner's rows (they have no team)
       for (const id of ["taskQ", "taskMs", "taskTeam", "taskSec"]) document.getElementById(id).value = "";
       document.getElementById("taskState").value = "open"; renderRoadmap.ownerOnly = true; renderRoadmap();
       document.getElementById("tasksPanel").scrollIntoView({behavior: "smooth"}); }}, "show them")));
-  if (!needs.children.length) needs.append(el("li", {class: "dim"}, "Nothing is waiting for you."));
 }
 function fillSelect(id, values, label) {
   const s = document.getElementById(id), keep = s.value;

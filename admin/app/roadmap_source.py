@@ -74,8 +74,13 @@ class RoadmapSource:
             "budget": _budget(data.get("budget")),
             "teams": [_session(s, flights.get(s.get("name"))) for s in data.get("sessions") or []
                       if isinstance(s, dict)],
-            "needs_owner": [{"id": str(i), "kind": "owner", "what": "", "howto": ""}
+            # sessions waiting for the owner: plain ids (the old feed) or {id, what}
+            "needs_owner": [{"id": str(i.get("id", "")) if isinstance(i, dict) else str(i), "kind": "session",
+                             "what": str(i.get("what", "")) if isinstance(i, dict) else "", "howto": ""}
                             for i in data.get("waiting_on_owner") or []],
+            # the PM's open questions for the owner (owner-questions.md rows nobody has answered yet)
+            "questions": [_item(q, ("added", "from", "question", "options"))
+                          for q in data.get("owner_questions") or [] if isinstance(q, dict)],
         }}
 
     def howto(self, name):

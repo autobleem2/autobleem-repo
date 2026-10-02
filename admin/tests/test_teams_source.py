@@ -46,7 +46,19 @@ def test_a_fresh_feed_is_passed_on(tmp_path):
     assert [i["id"] for i in a["items"]] == ["TASK-1", "TASK-2"]
     assert a["note"] == "queued: TASK-9"
     assert (b["state"], b["items"], b["note"]) == ("idle", [], "")
-    assert got["needs_owner"] == [{"id": "TASK-7", "kind": "owner", "what": "", "howto": ""}]
+    assert got["needs_owner"] == [{"id": "TASK-7", "kind": "session", "what": "", "howto": ""}]
+    assert got["questions"] == []
+
+
+def test_sessions_and_open_questions_for_the_owner(tmp_path):
+    feed = dict(FEED, waiting_on_owner=[{"id": "PSC-TEST", "what": "the game on the console"}],
+                owner_questions=[{"added": "Fri 02.10 01:40", "from": "PM", "question": "Which way?",
+                                  "options": "A / B"}])
+    got = source(tmp_path, feed).teams(NOW)["status"]
+    assert got["needs_owner"] == [{"id": "PSC-TEST", "kind": "session", "what": "the game on the console",
+                                   "howto": ""}]
+    assert got["questions"] == [{"added": "Fri 02.10 01:40", "from": "PM", "question": "Which way?",
+                                 "options": "A / B"}]
 
 
 def test_a_session_without_slots_shows_its_task(tmp_path):
