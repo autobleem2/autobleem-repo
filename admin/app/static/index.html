@@ -158,6 +158,10 @@ tr.task{cursor:pointer}tr.task.done td{opacity:.55}tr.task.done .ttl{text-decora
 table.tasks{table-layout:fixed}
 table.tasks col.c-id{width:7.6rem}table.tasks col.c-st{width:6.4rem}table.tasks col.c-ms{width:5.6rem}
 table.tasks col.c-who{width:9rem}table.tasks col.c-size{width:3.6rem}
+/* a filter with its name above it */
+label.f{display:flex;flex-direction:column;gap:.15rem;margin:0}
+label.f>span{font-size:.68rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.row:has(label.f){align-items:flex-end}
 table.bugs{table-layout:fixed}
 table.bugs col.c-id{width:5.4rem}table.bugs col.c-pl{width:6.6rem}table.bugs col.c-sev{width:5.2rem}
 table.bugs col.c-st{width:6.8rem}table.bugs col.c-found{width:6.4rem}table.bugs col.c-fix{width:7rem}
@@ -270,13 +274,13 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
     <section class="panel" id="tasksPanel">
       <h2>Tasks <small id="taskCount"></small></h2>
       <div class="row">
-        <input type="text" id="taskQ" placeholder="search" size="18">
-        <select id="taskMs"><option value="">every milestone</option></select>
-        <select id="taskWho"><option value="">anyone</option></select>
-        <select id="taskSec"><option value="">every section</option></select>
-        <select id="taskState"><option value="open">open</option><option value="new">new</option>
+        <label class="f"><span>Search</span><input type="text" id="taskQ" placeholder="ID or words" size="18"></label>
+        <label class="f"><span>Milestone</span><select id="taskMs"><option value="">every milestone</option></select></label>
+        <label class="f"><span>Who</span><select id="taskWho"><option value="">anyone</option></select></label>
+        <label class="f"><span>Section</span><select id="taskSec"><option value="">every section</option></select></label>
+        <label class="f"><span>State</span><select id="taskState"><option value="open">open</option><option value="new">new</option>
           <option value="in progress">in progress</option><option value="done">done</option>
-          <option value="closed">closed</option><option value="">all</option></select>
+          <option value="closed">closed</option><option value="">all</option></select></label>
       </div>
       <div class="scroll"><table class="tasks">
         <colgroup><col class="c-id"><col><col class="c-st"><col class="c-ms"><col class="c-who"><col class="c-size"></colgroup>
@@ -291,19 +295,19 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
     <section class="panel">
       <h2>Bugs <small id="bugCount"></small></h2>
       <div class="row">
-        <input type="text" id="bugQ" placeholder="search" size="18">
-        <select id="bugState"><option value="">every state</option>
+        <label class="f"><span>Search</span><input type="text" id="bugQ" placeholder="ID or words" size="18"></label>
+        <label class="f"><span>State</span><select id="bugState"><option value="">every state</option>
           <option value="new">new</option><option value="in progress">in progress</option>
           <option value="done">done</option>
           <option value="open">open</option><option value="confirmed">confirmed</option>
           <option value="fixing">fixing</option><option value="fixed-untested">fixed-untested</option>
           <option value="closed">closed</option><option value="wontfix">wontfix</option>
           <option value="duplicate">duplicate</option>
-        </select>
-        <select id="bugPlatform"><option value="">every platform</option>
-          <option value="psc">psc</option><option value="rpi">rpi</option>
-          <option value="pcusb">pcusb</option><option value="win">win</option>
-        </select>
+        </select></label>
+        <label class="f"><span>Platform</span><select id="bugPlatform"><option value="">every platform</option>
+          <option value="psc">PSC</option><option value="rpi">Pi</option>
+          <option value="pcusb">PC stick</option><option value="win">Windows</option>
+        </select></label>
       </div>
       <div class="scroll"><table class="bugs">
         <colgroup><col class="c-id"><col><col class="c-pl"><col class="c-sev"><col class="c-st"><col class="c-found"><col class="c-fix"></colgroup>
