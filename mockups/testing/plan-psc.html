@@ -1,0 +1,114 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PlayStation Classic test plan - AutoBleem 2</title>
+<link rel="icon" href="assets/icon.png" type="image/png">
+<link rel="stylesheet" href="site.css"></head><body>
+<header class="top"><div class="bar"><a class="brand" href="index.html"><img src="assets/emblem.png" srcset="assets/emblem@2x.png 2x" alt="">AutoBleem 2 <span>Downloads</span></a><nav>
+<a href="#" class="xs">Store</a><a href="#" class="xs">Manual</a><a href="#">All files</a><a href="index.html" class="on">Testing</a><a href="#">GitHub</a></nav></div></header>
+<div class="hero"><div class="in"><p>PlayStation Classic - test plan.</p><img src="assets/logo.png" srcset="assets/logo@2x.png 2x" alt="AutoBleem 2"></div></div>
+<main>
+
+<p class="lede"><a href="index.html">&larr; Testing</a> &nbsp; Work through the steps, answer each one, and send it at the end. You do not need to finish: leave the rest empty. Your answers stay in this browser if you close the page.</p>
+<form action="#" method="post">
+<div class="panel">
+<div class="row2"><div><label class="f" for="ver" style="margin-top:0">Version you are testing</label>
+<select id="ver"><option>v2.0.0-alpha1 (testing)</option><option>v2.0.0-alpha1-14-g3fa9c21 (nightly)</option></select>
+<p class="hint">Filled in from the download you came from.</p></div>
+<div><label class="f" for="dev" style="margin-top:0">Your device <small>optional</small></label>
+<input type="text" id="dev" placeholder="e.g. PlayStation Classic, EU model, 8 GB stick"></div></div>
+<div class="row2"><div><label class="f" for="nm">Name or nickname <small>optional</small></label><input type="text" id="nm"></div>
+<div><label class="f" for="ct">Contact <small>optional - only used to ask about your answers</small></label><input type="email" id="ct" placeholder="e-mail"></div></div>
+<div class="hp"><label>Leave this empty <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+</div>
+<div class="progress"><span>5 of 12 answered</span><span class="bar"><i style="width:41%"></i></span><a href="plan-psc-print.html">Print / PDF</a></div>
+<div class="sec"><h2>Installing from Windows</h2><small>You need: AutoBleemInstaller on a PC, a USB stick for the console</small></div>
+<div class="step"><div class="top"><span class="sid">psc-1.1</span>
+<div class="txt"><b>Start the installer.</b><small>You should see: The channel is chosen for you; after a few seconds the status says what it would install ("A fresh install of AutoBleem v...").</small>
+<div class="choice"><label><input type="radio" name="psc-1.1" value="ok" checked><span class="ok">OK</span></label>
+<label><input type="radio" name="psc-1.1" value="problem"><span class="pr">Problem</span></label>
+<label><input type="radio" name="psc-1.1" value="na"><span class="na">Not applicable</span></label></div>
+<div class="cmt"><textarea name="psc-1.1-comment" placeholder="What happened instead? (a few words are enough)"></textarea></div>
+</div></div></div>
+<div class="step"><div class="top"><span class="sid">psc-1.2</span>
+<div class="txt"><b>Switch between the three channels (Release, Testing, Nightly).</b><small>You should see: The version in the status changes. Release says it has nothing to install.</small>
+<div class="choice"><label><input type="radio" name="psc-1.2" value="ok" checked><span class="ok">OK</span></label>
+<label><input type="radio" name="psc-1.2" value="problem"><span class="pr">Problem</span></label>
+<label><input type="radio" name="psc-1.2" value="na"><span class="na">Not applicable</span></label></div>
+<div class="cmt"><textarea name="psc-1.2-comment" placeholder="What happened instead? (a few words are enough)"></textarea></div>
+</div></div></div>
+<div class="step"><div class="top"><span class="sid">psc-1.3</span>
+<div class="txt"><b>Use a fresh stick, choose Testing and press Install.</b><small>You should see: The package is downloaded and checked, then unpacked; the stick is named SONY and the console boots it.</small>
+<div class="choice"><label><input type="radio" name="psc-1.3" value="ok" checked><span class="ok">OK</span></label>
+<label><input type="radio" name="psc-1.3" value="problem"><span class="pr">Problem</span></label>
+<label><input type="radio" name="psc-1.3" value="na"><span class="na">Not applicable</span></label></div>
+<div class="cmt"><textarea name="psc-1.3-comment" placeholder="What happened instead? (a few words are enough)"></textarea></div>
+</div></div></div>
+<div class="step"><div class="top"><span class="sid">psc-1.4</span>
+<div class="txt"><b>Run the installer again over the same stick, with Nightly.</b><small>You should see: It says which version is on the stick and what it will update to. After Update your games, saves and settings are still there.</small>
+<div class="choice"><label><input type="radio" name="psc-1.4" value="ok"><span class="ok">OK</span></label>
+<label><input type="radio" name="psc-1.4" value="problem"><span class="pr">Problem</span></label>
+<label><input type="radio" name="psc-1.4" value="na" checked><span class="na">Not applicable</span></label></div>
+<div class="cmt"><textarea name="psc-1.4-comment" placeholder="What happened instead? (a few words are enough)"></textarea></div>
+</div></div></div>
+<div class="step"><div class="top"><span class="sid">psc-1.5</span>
+<div class="txt"><b>Unplug the network cable or turn Wi-Fi off and start the installer.</b><small>You should see: The status says there is nothing to install and mentions the internet. Install stays greyed out.</small>
+<div class="choice"><label><input type="radio" name="psc-1.5" value="ok"><span class="ok">OK</span></label>
+<label><input type="radio" name="psc-1.5" value="problem"><span class="pr">Problem</span></label>
+<label><input type="radio" name="psc-1.5" value="na"><span class="na">Not applicable</span></label></div>
+<div class="cmt"><textarea name="psc-1.5-comment" placeholder="What happened instead? (a few words are enough)"></textarea></div>
+</div></div></div>
+<div class="sec"><h2>Updating on the console</h2><small>You need: a console with AutoBleem and Wi-Fi set up in PSC-Bios</small></div>
+<div class="step"><div class="top"><span class="sid">psc-2.1</span>
+<div class="txt"><b>Open PSC-Bios (L2+R2, then Hardware Information) and connect to Wi-Fi.</b><small>You should see: PSC-Bios shows an IP address.</small>
+<div class="choice"><label><input type="radio" name="psc-2.1" value="ok"><span class="ok">OK</span></label>
+<label><input type="radio" name="psc-2.1" value="problem"><span class="pr">Problem</span></label>
+<label><input type="radio" name="psc-2.1" value="na"><span class="na">Not applicable</span></label></div>
+<div class="cmt"><textarea name="psc-2.1-comment" placeholder="What happened instead? (a few words are enough)"></textarea></div>
+</div></div></div>
+<div class="step"><div class="top"><span class="sid">psc-2.2</span>
+<div class="txt"><b>Open Options, then Updates.</b><small>You should see: The row is there, with release / testing / nightly / off.</small>
+<div class="choice"><label><input type="radio" name="psc-2.2" value="ok"><span class="ok">OK</span></label>
+<label><input type="radio" name="psc-2.2" value="problem"><span class="pr">Problem</span></label>
+<label><input type="radio" name="psc-2.2" value="na"><span class="na">Not applicable</span></label></div>
+<div class="cmt"><textarea name="psc-2.2-comment" placeholder="What happened instead? (a few words are enough)"></textarea></div>
+</div></div></div>
+<div class="step"><div class="top"><span class="sid">psc-2.3</span>
+<div class="txt"><b>Choose nightly, go back to the carousel and wait up to a minute.</b><small>You should see: An "Update available" dialog shows both versions.</small>
+<div class="choice"><label><input type="radio" name="psc-2.3" value="ok"><span class="ok">OK</span></label>
+<label><input type="radio" name="psc-2.3" value="problem" checked><span class="pr">Problem</span></label>
+<label><input type="radio" name="psc-2.3" value="na"><span class="na">Not applicable</span></label></div>
+<div class="cmt"><textarea name="psc-2.3-comment" placeholder="What happened instead? (a few words are enough)">The dialog showed only one version number and no nightly one.</textarea></div>
+</div></div></div>
+<div class="step"><div class="top"><span class="sid">psc-2.4</span>
+<div class="txt"><b>Choose "Remind me tomorrow".</b><small>You should see: The dialog goes away and does not come back when you restart the launcher.</small>
+<div class="choice"><label><input type="radio" name="psc-2.4" value="ok"><span class="ok">OK</span></label>
+<label><input type="radio" name="psc-2.4" value="problem"><span class="pr">Problem</span></label>
+<label><input type="radio" name="psc-2.4" value="na"><span class="na">Not applicable</span></label></div>
+<div class="cmt"><textarea name="psc-2.4-comment" placeholder="What happened instead? (a few words are enough)"></textarea></div>
+</div></div></div>
+<div class="step"><div class="top"><span class="sid">psc-2.5</span>
+<div class="txt"><b>Choose "Update now".</b><small>You should see: A download bar is shown; the launcher closes, the AutoBleem picture stays while the stick is updated (up to a few minutes), then the launcher returns.</small>
+<div class="choice"><label><input type="radio" name="psc-2.5" value="ok"><span class="ok">OK</span></label>
+<label><input type="radio" name="psc-2.5" value="problem"><span class="pr">Problem</span></label>
+<label><input type="radio" name="psc-2.5" value="na"><span class="na">Not applicable</span></label></div>
+<div class="cmt"><textarea name="psc-2.5-comment" placeholder="What happened instead? (a few words are enough)"></textarea></div>
+</div></div></div>
+<div class="step"><div class="top"><span class="sid">psc-2.6</span>
+<div class="txt"><b>Open About.</b><small>You should see: It shows the new version. Games, save states, memory cards, the theme and settings are unchanged.</small>
+<div class="choice"><label><input type="radio" name="psc-2.6" value="ok"><span class="ok">OK</span></label>
+<label><input type="radio" name="psc-2.6" value="problem"><span class="pr">Problem</span></label>
+<label><input type="radio" name="psc-2.6" value="na"><span class="na">Not applicable</span></label></div>
+<div class="cmt"><textarea name="psc-2.6-comment" placeholder="What happened instead? (a few words are enough)"></textarea></div>
+</div></div></div>
+<div class="step"><div class="top"><span class="sid">psc-2.7</span>
+<div class="txt"><b>Turn Wi-Fi off, then press L2+R2 and choose Software Update.</b><small>You should see: "Not connected". No dialog at start and nothing slows down.</small>
+<div class="choice"><label><input type="radio" name="psc-2.7" value="ok"><span class="ok">OK</span></label>
+<label><input type="radio" name="psc-2.7" value="problem"><span class="pr">Problem</span></label>
+<label><input type="radio" name="psc-2.7" value="na"><span class="na">Not applicable</span></label></div>
+<div class="cmt"><textarea name="psc-2.7-comment" placeholder="What happened instead? (a few words are enough)"></textarea></div>
+</div></div></div>
+<p class="privacy">What you send is stored on the project's server, read only by the project's maintainers, and used to fix problems and plan the next release. Contact details are optional and used only to ask about your report. Logs are kept only to investigate the report.</p>
+<div class="sub"><button class="big" type="submit">Send my results</button><a class="dl quiet" href="plan-psc-print.html">Print / PDF</a></div>
+</form>
+</main>
+<footer>AutoBleem 2 - mockup, fake data only</footer></body></html>

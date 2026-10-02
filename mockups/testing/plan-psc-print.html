@@ -1,0 +1,49 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PlayStation Classic test plan - printable</title>
+<style>
+@page{size:A4;margin:14mm}
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#000;font:10.5pt/1.35 "Segoe UI",Arial,sans-serif}
+.sheet{max-width:182mm;margin:0 auto;padding:8mm 0}
+h1{font-size:17pt;margin:0 0 2mm}
+.sub{margin:0 0 4mm;font-size:9.5pt}
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:3mm 6mm;margin:0 0 5mm}
+.meta div{border-bottom:1px solid #000;padding-bottom:1mm;font-size:9pt;min-height:8mm}
+.meta span{display:block;font-size:7.5pt;color:#444}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #000;padding:1.6mm 2mm;vertical-align:top;font-size:9.5pt}
+th{background:#e6e6e6;font-size:8.5pt;text-align:left}
+tr{page-break-inside:avoid}
+td.id{font-family:Consolas,monospace;font-size:8.5pt;white-space:nowrap}
+td.bx{text-align:center;font-size:15pt;width:13mm;padding:1mm}
+td.cm{width:42mm}
+tr.sec td{background:#f0f0f0;font-weight:bold;font-size:10pt}tr.sec span{font-weight:normal;font-size:8.5pt}
+.note{font-size:8.5pt;margin-top:5mm}
+.noprint{background:#eee;border:1px solid #999;padding:3mm;margin-bottom:5mm;font-size:9.5pt}
+.noprint a{color:#000}
+@media print{.noprint{display:none}.sheet{padding:0}}
+</style></head><body><div class="sheet">
+<div class="noprint">Printable version. Use your browser's Print command and choose "Save as PDF" to keep a copy. Results only count when sent through the <a href="plan-psc.html">online form</a> - or write them here and copy them over later. <a href="plan-psc.html">&larr; Back to the form</a></div>
+<h1>AutoBleem 2 - PlayStation Classic test plan</h1>
+<p class="sub">Version tested: v2.0.0-alpha1 &nbsp; Plan revision: psc-1 &nbsp; Mark one box per step: <b>OK</b>, <b>Problem</b> (say what happened) or <b>N/A</b> (not applicable).</p>
+<div class="meta"><div><span>Version you tested (Options, then About)</span>&nbsp;</div><div><span>Date</span>&nbsp;</div>
+<div><span>Name or nickname (optional)</span>&nbsp;</div><div><span>Contact (optional)</span>&nbsp;</div></div>
+<table><thead><tr><th>Step</th><th>Do / you should see</th><th>OK</th><th>Problem</th><th>N/A</th><th>Comment</th></tr></thead><tbody>
+<tr class="sec"><td colspan="6">Installing from Windows <span>- you need: AutoBleemInstaller on a PC, a USB stick for the console</span></td></tr>
+<tr><td class="id">psc-1.1</td><td><b>Start the installer.</b><br><i>You should see:</i> The channel is chosen for you; after a few seconds the status says what it would install ("A fresh install of AutoBleem v...").</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="cm"></td></tr>
+<tr><td class="id">psc-1.2</td><td><b>Switch between the three channels (Release, Testing, Nightly).</b><br><i>You should see:</i> The version in the status changes. Release says it has nothing to install.</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="cm"></td></tr>
+<tr><td class="id">psc-1.3</td><td><b>Use a fresh stick, choose Testing and press Install.</b><br><i>You should see:</i> The package is downloaded and checked, then unpacked; the stick is named SONY and the console boots it.</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="cm"></td></tr>
+<tr><td class="id">psc-1.4</td><td><b>Run the installer again over the same stick, with Nightly.</b><br><i>You should see:</i> It says which version is on the stick and what it will update to. After Update your games, saves and settings are still there.</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="cm"></td></tr>
+<tr><td class="id">psc-1.5</td><td><b>Unplug the network cable or turn Wi-Fi off and start the installer.</b><br><i>You should see:</i> The status says there is nothing to install and mentions the internet. Install stays greyed out.</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="cm"></td></tr>
+<tr class="sec"><td colspan="6">Updating on the console <span>- you need: a console with AutoBleem and Wi-Fi set up in PSC-Bios</span></td></tr>
+<tr><td class="id">psc-2.1</td><td><b>Open PSC-Bios (L2+R2, then Hardware Information) and connect to Wi-Fi.</b><br><i>You should see:</i> PSC-Bios shows an IP address.</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="cm"></td></tr>
+<tr><td class="id">psc-2.2</td><td><b>Open Options, then Updates.</b><br><i>You should see:</i> The row is there, with release / testing / nightly / off.</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="cm"></td></tr>
+<tr><td class="id">psc-2.3</td><td><b>Choose nightly, go back to the carousel and wait up to a minute.</b><br><i>You should see:</i> An "Update available" dialog shows both versions.</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="cm"></td></tr>
+<tr><td class="id">psc-2.4</td><td><b>Choose "Remind me tomorrow".</b><br><i>You should see:</i> The dialog goes away and does not come back when you restart the launcher.</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="cm"></td></tr>
+<tr><td class="id">psc-2.5</td><td><b>Choose "Update now".</b><br><i>You should see:</i> A download bar is shown; the launcher closes, the AutoBleem picture stays while the stick is updated (up to a few minutes), then the launcher returns.</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="cm"></td></tr>
+<tr><td class="id">psc-2.6</td><td><b>Open About.</b><br><i>You should see:</i> It shows the new version. Games, save states, memory cards, the theme and settings are unchanged.</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="cm"></td></tr>
+<tr><td class="id">psc-2.7</td><td><b>Turn Wi-Fi off, then press L2+R2 and choose Software Update.</b><br><i>You should see:</i> "Not connected". No dialog at start and nothing slows down.</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="bx">&#9744;</td><td class="cm"></td></tr>
+</tbody></table>
+<p class="note">Report a problem or an idea: autobleem.retromenele.pl/testing/ - what you send is stored on the project's server and read only by the project's maintainers.</p>
+</div></body></html>

@@ -1,0 +1,33 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Report a problem - AutoBleem 2</title>
+<link rel="icon" href="assets/icon.png" type="image/png">
+<link rel="stylesheet" href="site.css"></head><body>
+<header class="top"><div class="bar"><a class="brand" href="index.html"><img src="assets/emblem.png" srcset="assets/emblem@2x.png 2x" alt="">AutoBleem 2 <span>Downloads</span></a><nav>
+<a href="#" class="xs">Store</a><a href="#" class="xs">Manual</a><a href="#">All files</a><a href="index.html" class="on">Testing</a><a href="#">GitHub</a></nav></div></header>
+<div class="hero"><div class="in"><p>Report a problem.</p><img src="assets/logo.png" srcset="assets/logo@2x.png 2x" alt="AutoBleem 2"></div></div>
+<main>
+
+<p class="lede"><a href="index.html">&larr; Testing</a> &nbsp; Tell us what happened, in your own words. <b>Ideas are welcome too</b> - write them here as well; they are kept on a "User ideas" list and read when we plan the next release.</p>
+<form action="#" method="post" enctype="multipart/form-data" class="panel">
+<div class="row2"><div><label class="f" for="pl" style="margin-top:0">Device</label>
+<select id="pl"><option>PlayStation Classic</option><option>Raspberry Pi</option><option>PC USB stick</option><option>Windows</option></select></div>
+<div><label class="f" for="v" style="margin-top:0">Version</label>
+<select id="v"><option>v2.0.0-alpha1 (testing)</option><option>v2.0.0-alpha1-14-g3fa9c21 (nightly)</option><option>Other / not sure</option></select>
+<p class="hint">Options, then About, shows it.</p></div></div>
+<label class="f" for="st">What did you do? <small>step by step</small></label>
+<textarea id="st" placeholder="1. Options, then Updates&#10;2. Chose nightly&#10;3. Waited a minute"></textarea>
+<label class="f" for="ex">What did you expect to happen?</label><textarea id="ex" style="min-height:3.6rem"></textarea>
+<label class="f" for="ac">What happened instead?</label><textarea id="ac" style="min-height:3.6rem"></textarea>
+<label class="f" for="lg">Log files <small>optional - a .zip, up to 25 MB</small></label>
+<input type="file" id="lg" accept=".zip">
+<p class="hint">On the console: Hardware Information, then "Save logs" writes a folder to the stick. Zip that folder.</p>
+<label class="check"><input type="checkbox" required><span>I agree to send these logs. I know they can contain my Wi-Fi name, game names and device ids. <b>Required when a file is attached.</b></span></label>
+<label class="f" for="ct">Contact <small>optional - only used to ask about this report</small></label>
+<input type="email" id="ct" placeholder="e-mail">
+<div class="hp"><label>Leave this empty <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+<p class="privacy">What you send is stored on the project's server, read only by the project's maintainers, and used to fix problems and plan the next release. Contact details are optional and used only to ask about your report. Logs are kept only to investigate the report.</p>
+<div class="sub" style="margin-bottom:0"><button class="big" type="submit">Send the report</button><span class="older">You get a report id to look it up later.</span></div>
+</form>
+</main>
+<footer>AutoBleem 2 - mockup, fake data only</footer></body></html>
