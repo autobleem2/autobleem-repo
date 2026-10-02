@@ -72,6 +72,8 @@ class RoadmapSource:
             "mode": str(data.get("mode") or "full"),
             "leads_note": str(data.get("leads_note") or ""),
             "budget": _budget(data.get("budget")),
+            # the test machines for Server > Health (the VM + sandboxes, Pi 400, PSC): who holds what, what runs
+            "machines": _machines(data.get("machines")),
             "teams": [_session(s, flights.get(s.get("name"))) for s in data.get("sessions") or []
                       if isinstance(s, dict)],
             # sessions waiting for the owner: plain ids (the old feed) or {id, what}
@@ -101,6 +103,29 @@ def _wait(i):
         return {"id": str(i), "kind": "session", "what": "", "howto": "", "blocks": "", "since": ""}
     return {"id": str(i.get("id", "")), "kind": "session", "what": str(i.get("what", "")), "howto": "",
             "blocks": str(i.get("blocks", "")), "since": str(i.get("since", ""))}
+
+
+def _claims(items):
+    return [_item(c, ("resource", "text")) for c in items or [] if isinstance(c, dict)]
+
+
+def _machines(m):
+    """The feed's machines block (the test VM + its sandboxes, the Pi 400, the PSC) cut down to the fields the Health
+    card prints; {} when the feed has none (an old feed). Strings only, so a malformed feed cannot break the page."""
+    if not isinstance(m, dict) or not m:
+        return {}
+    vm, out = m.get("vm") if isinstance(m.get("vm"), dict) else {}, {}
+    out["vm"] = dict(_item(vm, ("state", "lease", "launcher", "driver")), claims=_claims(vm.get("claims")),
+                     sandboxes_known=bool(vm.get("sandboxes_known", True)),
+                     sandboxes=[_item(s, ("name", "state", "lease")) for s in vm.get("sandboxes") or []
+                                if isinstance(s, dict)])
+    for key in ("pi", "psc"):
+        d = m.get(key) if isinstance(m.get(key), dict) else {}
+        out[key] = dict(_item(d, ("launcher", "md5")), online=d.get("online") if isinstance(d.get("online"), bool)
+                        else None, claims=_claims(d.get("claims")))
+    out["other_claims"] = _claims(m.get("other_claims"))
+    out["probed_at"] = str(m.get("probed_at", ""))
+    return out
 
 
 def _item(d, keys):

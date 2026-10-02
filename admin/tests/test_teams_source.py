@@ -112,3 +112,36 @@ def test_junk_entries_do_not_break_the_page_data(tmp_path):
     assert [t["name"] for t in got["teams"]] == ["Lead C"]
     assert got["teams"][0]["state"] == "unknown"
     assert got["budget"]["week_pct"] is None
+
+
+MACHINES = {
+    "probed_at": "2026-10-01T13:49:00+00:00",
+    "vm": {"state": "running", "lease": "held by Ann (T-1) since 10:00, 12 min left", "launcher": "active",
+           "driver": "up", "sandboxes_known": True, "claims": [{"resource": "pcusb-vm", "text": "Ann T-1"}],
+           "sandboxes": [{"name": "uirev48", "state": "running", "lease": "Bob (T-2) since 09:10, 20 min left"},
+                         {"name": "dd2", "state": "stopped", "lease": "free"}]},
+    "pi": {"online": True, "launcher": "running", "md5": "a" * 32, "claims": []},
+    "psc": {"online": False, "launcher": "unknown", "md5": "", "claims": [{"resource": "psc", "text": "PM"}]},
+    "other_claims": [],
+}
+
+
+def test_the_machines_block_is_passed_on(tmp_path):
+    got = source(tmp_path, dict(FEED, machines=MACHINES)).teams(NOW)["status"]["machines"]
+    assert got["probed_at"] == MACHINES["probed_at"]
+    assert got["vm"]["lease"].startswith("held by Ann") and got["vm"]["driver"] == "up"
+    assert got["vm"]["claims"] == [{"resource": "pcusb-vm", "text": "Ann T-1"}]
+    assert [s["name"] for s in got["vm"]["sandboxes"]] == ["uirev48", "dd2"]
+    assert got["pi"] == {"launcher": "running", "md5": "a" * 32, "online": True, "claims": []}
+    assert got["psc"]["online"] is False and got["psc"]["claims"][0]["text"] == "PM"
+
+
+def test_a_feed_without_machines_gives_an_empty_block(tmp_path):
+    assert source(tmp_path, FEED).teams(NOW)["status"]["machines"] == {}
+
+
+def test_a_junk_machines_block_does_not_break_the_page_data(tmp_path):
+    got = source(tmp_path, dict(FEED, machines={"vm": "x", "pi": None, "psc": {"online": "yes"}})).teams(NOW)["status"]
+    assert got["machines"]["vm"]["sandboxes"] == [] and got["machines"]["pi"]["online"] is None
+    assert got["machines"]["psc"]["online"] is None
+    assert source(tmp_path, dict(FEED, machines="x")).teams(NOW)["status"]["machines"] == {}

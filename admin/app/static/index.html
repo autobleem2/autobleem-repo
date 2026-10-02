@@ -492,6 +492,10 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
       <table><tbody id="health"></tbody></table>
     </section>
     <section class="panel">
+      <h2>Machines <small class="dim" id="machinesAge"></small></h2>
+      <table><tbody id="machines"><tr><td class="dim">Loading...</td></tr></tbody></table>
+    </section>
+    <section class="panel">
       <h2>Audit log</h2>
       <div class="scroll"><table>
         <thead><tr><th>When</th><th>Who</th><th>What</th><th>Result</th></tr></thead>
@@ -713,6 +717,38 @@ function renderHealth(h) {
   const img = h.image || {};
   for (const tag of ["develop", "latest"]) tb.append(el("tr", {}, el("td", {}, "Build image :" + tag),
     el("td", {class: "dim"}, img.error ? img.error : when(img[tag]) || "not published")));
+}
+
+// The test machines (from the Teams feed, read-only): the VM and its sandboxes, the Pi 400, the PSC - online or not,
+// the launcher running, and who holds each (a lease or a claim file)
+function renderMachines(t) {
+  const tb = document.getElementById("machines"), age = document.getElementById("machinesAge");
+  tb.replaceChildren();
+  const st = t && t.status, m = st && st.machines;
+  age.textContent = m && m.probed_at ? "probed " + ago(m.probed_at) : "";
+  if (!m || !m.vm) {
+    tb.append(el("tr", {}, el("td", {class: "dim", colspan: 2}, st ? "The feed has no machines block yet."
+      : (t && t.reason) || "No feed.")));
+    return;
+  }
+  const row = (name, cls, text, note) => tb.append(el("tr", {}, el("td", {}, name),
+    el("td", {class: cls}, text, note ? el("small", {}, note) : null)));
+  const claims = c => c.length ? "claimed: " + c.map(x => x.resource + " - " + x.text).join("; ") : "";
+  const held = lease => lease && lease !== "free" && lease !== "unknown";
+  const vm = m.vm, up = vm.state === "running";
+  row("VM (pcusb-test)", up ? "ok" : vm.state === "offline" ? "bad" : "warn",
+    vm.state + (up ? " · launcher " + vm.launcher + " · driver " + vm.driver : ""), claims(vm.claims));
+  row("VM lease", held(vm.lease) ? "warn" : "dim", held(vm.lease) ? vm.lease : vm.lease === "unknown" ? "unknown" : "free");
+  const idle = vm.sandboxes.filter(s => s.state !== "running" && !held(s.lease));
+  for (const s of vm.sandboxes.filter(s => !idle.includes(s)))
+    row("Sandbox " + s.name, held(s.lease) ? "warn" : "ok", s.state + " · " + (held(s.lease) ? s.lease : "no lease"));
+  if (!vm.sandboxes_known) row("Sandboxes", "warn", "unknown");
+  else if (idle.length) row("Idle sandboxes", "dim", idle.map(s => s.name).join(", "));
+  for (const [name, d] of [["Pi 400", m.pi], ["PSC", m.psc]])
+    row(name, d.online ? (d.launcher === "running" ? "ok" : "warn") : "bad",
+      d.online ? "online · launcher " + d.launcher + (d.md5 ? " · md5 " + d.md5.slice(0, 12) : "") : "offline",
+      claims(d.claims));
+  if (m.other_claims.length) row("Other claims", "warn", m.other_claims.map(x => x.resource + " - " + x.text).join("; "));
 }
 
 // -------------------------------------------------------------------------------- Audit tab
@@ -1123,7 +1159,7 @@ async function loadRoadmap() {
   } catch (e) { document.getElementById("milestones").replaceChildren(el("p", {class: "bad"}, e.message)); }
   try { teamsData = await api("teams"); } catch (e) { teamsData = {status: null, reason: e.message}; }
   try { ownerDone = new Map((await api("needs/done")).map(d => [d.id, d])); } catch (e) { /* keep the last list */ }
-  renderTeams();
+  renderTeams(); renderMachines(teamsData);
 }
 for (const id of ["taskQ", "taskMs", "taskWho", "taskSec", "taskState"])
   document.getElementById(id).addEventListener(id === "taskQ" ? "input" : "change",
