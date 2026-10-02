@@ -102,10 +102,13 @@ def _item(d, keys):
 
 def _session(s, flight):
     """One teams.json session as a row: its in-flight slots (else its current task) and what waits in its queue."""
-    items = [_item(i, ("id", "desc")) for i in (flight or {}).get("in_flight") or [] if isinstance(i, dict)]
-    items = [{"id": i["id"], "what": i["desc"]} for i in items]
+    # every item: the task id, its description, the contractor doing it (when named) and since when (UTC ISO, may be "")
+    items = [_item(i, ("id", "desc", "worker", "since")) for i in (flight or {}).get("in_flight") or []
+             if isinstance(i, dict)]
+    items = [{"id": i["id"], "what": i["desc"], "worker": i["worker"], "since": i["since"]} for i in items]
     if not items and s.get("task_id"):
-        items = [{"id": str(s["task_id"]), "what": str(s.get("task", ""))}]
+        items = [{"id": str(s["task_id"]), "what": str(s.get("task", "")), "worker": "",
+                  "since": str(s.get("since", ""))}]
     queued = [str(q) for q in (flight or {}).get("queued") or []]
     return {"name": str(s.get("name", "")), "team": " · ".join(x for x in (str(s.get("role", "")), str(s.get("model", ""))) if x),
             "state": str(s.get("state", "")) or "unknown", "items": items,
