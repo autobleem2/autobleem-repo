@@ -121,5 +121,10 @@ def _session(s, flight):
 def _budget(b):
     """The budget line as numbers or None, so the page prints only what is known."""
     b = b if isinstance(b, dict) else {}
+    series = [[str(p[0]), p[1]] for p in b.get("series") or []
+              if isinstance(p, (list, tuple)) and len(p) == 2 and isinstance(p[1], (int, float))]
     return {"h5_pct": b.get("h5_pct"), "week_pct": b.get("week_pct"), "pace_pct_per_h": b.get("pace_pct_per_h"),
-            "stop_day": b.get("stop_day")}
+            "stop_day": b.get("stop_day"),
+            # the chart (the laptop panel's budget tile): this week's readings, the window's end, the plan line
+            "reading_at": b.get("reading_at"), "h5_reset": b.get("h5_reset"), "week_reset": b.get("week_reset"),
+            "week_hits_100": b.get("week_hits_100"), "plan_per_day": b.get("plan_per_day"), "series": series}

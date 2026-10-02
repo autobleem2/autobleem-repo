@@ -163,6 +163,21 @@ td.st{white-space:nowrap;font-weight:600;font-size:.86rem}
 tr.task.done td.st{opacity:1}
 .stale{color:var(--warn);font-weight:600}
 #teams td{font-size:.95rem}#teams .job+.job{margin-top:.35rem}#teams td:first-child{white-space:nowrap;font-weight:600}
+/* Teams now: the team tree on the left, the budget (the laptop panel's tile) on the right */
+.split{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:1.4rem;align-items:start}
+@media (max-width:56rem){.split{grid-template-columns:1fr}}
+#budget h3 small{font-weight:500;margin-left:.4rem}
+#budget .cells{display:grid;grid-template-columns:1fr 1fr 1fr 1.6fr;gap:.4rem;margin:.3rem 0 .6rem}
+#budget .cell{background:rgba(18,22,28,.45);box-shadow:inset 0 0 0 1px var(--line-soft);padding:.3rem .55rem}
+#budget .cell span{display:block;color:var(--dim);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase}
+#budget .cell b{display:block;font-size:1.35rem;font-weight:600;color:#fff;white-space:nowrap}
+#budget .cell b.small{font-size:.92rem;padding:.3rem 0 .2rem}
+#budget .cell b.warn{color:var(--warn)}#budget.stale .cell b{color:var(--dim)}
+#budgetChart svg{display:block;width:100%;height:auto;background:rgba(18,22,28,.45)}
+#budget .legend{font-size:.78rem;margin:.35rem 0 0}
+#budget .lg{display:inline-block;width:1.1rem;height:0;vertical-align:middle;margin:0 .3rem 0 .7rem;border-top:2px solid}
+#budget .lg.plan{border-top:2px dashed var(--steel);margin-left:0}#budget .lg.use{border-color:var(--cyan)}
+#budget .lg.proj{border-top:2px dashed var(--pre)}#budget .lg.now{border-color:var(--bad)}
 #teams tr.child td{border-top:0}#teams tr.child td:first-child{padding-left:1.1rem;font-weight:500}
 #teams .branch{color:var(--magenta);margin-right:.45rem;font-family:ui-monospace,Consolas,monospace}
 #teams small.kind{display:block;margin-left:1.45rem;color:var(--cyan);font-size:.78rem;letter-spacing:.04em;text-transform:uppercase}
@@ -211,8 +226,16 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
     </section>
     <section class="panel">
       <h2>Teams now <small id="teamsAge"></small></h2>
-      <div class="scroll"><table><tbody id="teams"></tbody></table></div>
-      <p class="dim" id="usage"></p>
+      <div class="split">
+        <div class="scroll"><table><tbody id="teams"></tbody></table></div>
+        <div id="budget">
+          <h3>Budget <small class="dim" id="budgetAge"></small></h3>
+          <div class="cells" id="budgetCells"></div>
+          <div id="budgetChart"></div>
+          <p class="dim legend"><i class="lg plan"></i>plan 14/day <i class="lg use"></i>used
+            <i class="lg proj"></i>at this pace <i class="lg now"></i>now</p>
+        </div>
+      </div>
     </section>
     <section class="panel">
       <h2>Milestones <small>click one to filter the tasks</small></h2>
@@ -681,6 +704,61 @@ function msKeys(v) {
   return [...new Set(keys)];
 }
 function teamOf(r) { return (r.team || "").split(/[(,;]/)[0].trim(); }
+// The budget beside the team: the laptop panel's tile (panel/laptop/abpanel_gui.py Budget) - 5h, week, pace, when
+// the week hits 100%, and the week's chart: the plan line (14 a day), the readings, the line at this pace, now.
+const DAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+function whenShort(iso) {
+  const d = new Date(iso);
+  return DAY[d.getDay()] + " " + d.toLocaleString(undefined, {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"});
+}
+function renderBudget(u) {
+  const box = document.getElementById("budget"), now = Date.now();
+  const stale = !u.reading_at || now - new Date(u.reading_at).getTime() > 45 * 60e3;
+  box.classList.toggle("stale", stale);
+  document.getElementById("budgetAge").textContent = u.reading_at
+    ? "reading " + ago(u.reading_at) + (stale ? " - not fresh" : "") : "no reading";
+  const h5Over = u.h5_reset && new Date(u.h5_reset).getTime() <= now;
+  const afterReset = u.week_hits_100 && u.week_reset && new Date(u.week_hits_100) > new Date(u.week_reset);
+  const cell = (label, value, cls) => el("div", {class: "cell"}, el("span", {}, label), el("b", {class: cls || ""}, value));
+  document.getElementById("budgetCells").replaceChildren(
+    cell("5h", u.h5_pct == null ? "-" : (h5Over ? 0 : u.h5_pct) + "%"),
+    cell("week", u.week_pct == null ? "-" : u.week_pct + "%"),
+    cell("pace", u.pace_pct_per_h == null || stale ? "-" : u.pace_pct_per_h + "%/h"),
+    cell("week hits 100%", !u.week_hits_100 || stale ? "-" : whenShort(u.week_hits_100) + (afterReset ? " (after reset)" : ""),
+         "small" + (!afterReset && u.week_hits_100 && !stale ? " warn" : "")));
+  const chart = document.getElementById("budgetChart");
+  if (!u.week_reset) { chart.replaceChildren(el("p", {class: "dim"}, "No week window yet.")); return; }
+  const W = 560, H = 230, L = 34, R = 10, T = 10, B = 22;
+  const end = new Date(u.week_reset).getTime(), start = end - 7 * 864e5;
+  const X = t => L + (W - L - R) * (t - start) / (end - start);
+  const Y = p => T + (H - T - B) * (1 - Math.max(0, Math.min(100, p)) / 100);
+  const s = [];
+  for (const p of [0, 25, 50, 75, 100])
+    s.push(`<line x1="${L}" y1="${Y(p)}" x2="${W - R}" y2="${Y(p)}" class="g"/><text x="${L - 5}" y="${Y(p) + 3}" class="ax" text-anchor="end">${p}</text>`);
+  for (let d = 0; d <= 7; d++) {
+    const t = start + d * 864e5;
+    s.push(`<line x1="${X(t)}" y1="${T}" x2="${X(t)}" y2="${H - B}" class="g"/>`);
+    if (d < 7) s.push(`<text x="${X(t + 432e5)}" y="${H - 7}" class="ax" text-anchor="middle">${DAY[new Date(t).getDay()]}</text>`);
+  }
+  s.push(`<line x1="${X(start)}" y1="${Y(0)}" x2="${X(end)}" y2="${Y((u.plan_per_day || 14) * 7)}" class="plan"/>`);
+  const pts = (u.series || []).map(([at, p]) => [new Date(at).getTime(), p]).filter(([t]) => t >= start && t <= end);
+  if (pts.length > 1) s.push(`<polyline points="${pts.map(([t, p]) => X(t) + "," + Y(p)).join(" ")}" class="use"/>`);
+  for (const [t, p] of pts) s.push(`<circle cx="${X(t)}" cy="${Y(p)}" r="2.2" class="dot"/>`);
+  const rate = u.pace_pct_per_h;
+  if (rate > 0 && pts.length && !stale) {
+    let [t0, p0] = pts[pts.length - 1], t1 = t0 + (100 - p0) / rate * 36e5, p1 = 100;
+    if (t1 > end) { p1 = p0 + rate * (end - t0) / 36e5; t1 = end; }
+    s.push(`<line x1="${X(t0)}" y1="${Y(p0)}" x2="${X(t1)}" y2="${Y(p1)}" class="proj"/>`);
+  }
+  if (now >= start && now <= end)
+    s.push(`<line x1="${X(now)}" y1="${T}" x2="${X(now)}" y2="${H - B}" class="now"/>` +
+           `<text x="${X(now)}" y="${T + 9}" class="nowt" text-anchor="${X(now) < W - 40 ? "middle" : "end"}">now</text>`);
+  chart.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="This week's budget use against the plan">
+    <style>.g{stroke:rgba(54,217,224,.14)}.ax{fill:#9aa8b6;font:10px ui-monospace,Consolas,monospace}
+    .plan{stroke:#aab8c6;stroke-width:2;stroke-dasharray:6 4}.use{fill:none;stroke:#36d9e0;stroke-width:1.5}
+    .dot{fill:#36d9e0}.proj{stroke:#ffc857;stroke-width:2;stroke-dasharray:3 3}.now{stroke:#ff6b6b;stroke-width:2}
+    .nowt{fill:#ff6b6b;font:bold 10px ui-monospace,Consolas,monospace}</style>${s.join("")}</svg>`;
+}
 // a contractor's kind of work (report.py assign --kind, the agent type) as the Teams tree shows it
 const KIND_LABEL = {developer: "developer", senior: "senior developer", tester: "testing", docs: "docs / translations",
                     general: "general"};
@@ -761,11 +839,7 @@ function renderTeams() {
       kids.forEach((k, n) => tb.append(row(k, true, n === kids.length - 1)));
     }
     if (st.leads_note) tb.append(el("tr", {}, el("td", {colspan: 3, class: "dim"}, st.leads_note)));
-    const u = st.budget || {};
-    document.getElementById("usage").textContent = u.week_pct != null
-      ? "Budget: 5-hour " + u.h5_pct + "% · weekly " + u.week_pct + "%" +
-        (u.pace_pct_per_h != null ? " · pace " + u.pace_pct_per_h + "%/h" : "") +
-        (u.stop_day ? " · stop day " + u.stop_day : "") : "";
+    renderBudget(st.budget || {});
     for (const q of st.questions || [])
       needs.append(el("li", {}, el("span", {class: "kind"}, "question"), q.question,
         el("small", {}, "from " + q.from + " · added " + q.added + (q.options ? " · " + q.options : ""))));

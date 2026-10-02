@@ -40,7 +40,8 @@ def source(tmp_path, feed=None, raw=None):
 def test_a_fresh_feed_is_passed_on(tmp_path):
     got = source(tmp_path, FEED).teams(NOW)["status"]
     assert got["written_at"] == "2026-10-01T13:50:00+00:00"
-    assert got["budget"] == FEED["budget"]
+    assert {k: got["budget"][k] for k in FEED["budget"]} == FEED["budget"]
+    assert got["budget"]["series"] == []
     a, b = got["teams"]
     assert (a["name"], a["team"], a["state"]) == ("Lead A", "Lead Software · model-x", "working")
     assert [i["id"] for i in a["items"]] == ["TASK-1", "TASK-2"]
