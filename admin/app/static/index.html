@@ -130,13 +130,13 @@ input[type=checkbox]{accent-color:var(--cyan)}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:0 1.2rem}
 @media (max-width:44rem){.cols{grid-template-columns:1fr}}
 /* PLATFORM-9 - the bugs tab */
-#bugsClosedDetails{margin-top:1rem}
-#bugsClosedDetails summary{cursor:pointer;color:var(--dim);font-size:.9rem;padding:.3rem 0;list-style:none}
-#bugsClosedDetails summary::-webkit-details-marker{display:none}
-#bugsClosedDetails summary:before{content:"\25B8";color:var(--cyan);display:inline-block;margin-right:.5rem;transition:transform .15s}
-#bugsClosedDetails[open] summary:before{transform:rotate(90deg)}
-#bugsClosedDetails summary:hover{color:#fff}
-#bugsClosedDetails[open] summary{margin-bottom:.3rem}
+details.folded{margin-top:1rem}
+details.folded summary{cursor:pointer;color:var(--dim);font-size:.9rem;padding:.3rem 0;list-style:none}
+details.folded summary::-webkit-details-marker{display:none}
+details.folded summary:before{content:"\25B8";color:var(--cyan);display:inline-block;margin-right:.5rem;transition:transform .15s}
+details.folded[open] summary:before{transform:rotate(90deg)}
+details.folded summary:hover{color:#fff}
+details.folded[open] summary{margin-bottom:.3rem}
 .sev-blocker{color:var(--bad)}.sev-major{color:var(--warn)}.sev-minor,.sev-trivial{color:var(--dim)}
 .bstate-open,.bstate-confirmed,.bstate-new{color:var(--pre)}.bstate-fixing,.bstate-in-progress{color:var(--cyan)}
 .bstate-fixed-untested,.bstate-done{color:var(--dev)}.bstate-closed{color:var(--rel)}
@@ -299,6 +299,14 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
           <th data-sort="ms">Milestone</th><th data-sort="who">Who</th><th data-sort="size">Size</th></tr></thead>
         <tbody id="tasks"></tbody>
       </table></div>
+      <details id="tasksDoneDetails" class="folded">
+        <summary>Done / closed <span id="tasksDoneCount" class="dim"></span></summary>
+        <div class="scroll"><table class="tasks">
+          <colgroup><col class="c-id"><col><col class="c-st"><col class="c-ms"><col class="c-who"><col class="c-size"></colgroup>
+          <thead><tr><th>ID</th><th>Task</th><th>State</th><th>Milestone</th><th>Who</th><th>Size</th></tr></thead>
+          <tbody id="tasksDone"></tbody>
+        </table></div>
+      </details>
     </section>
   </section>
 
@@ -326,7 +334,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
           <th data-sort="severity">Severity</th><th data-sort="state">State</th><th data-sort="found">Found</th><th>Fix</th></tr></thead>
         <tbody id="bugsOpen"></tbody>
       </table></div>
-      <details id="bugsClosedDetails">
+      <details id="bugsClosedDetails" class="folded">
         <summary>Closed / wontfix / duplicate <span id="bugsClosedCount" class="dim"></span></summary>
         <div class="scroll"><table class="bugs">
           <colgroup><col class="c-id"><col><col class="c-pl"><col class="c-sev"><col class="c-st"><col class="c-found"><col class="c-fix"></colgroup>
@@ -1010,35 +1018,45 @@ function renderTasks(d) {
   const q = document.getElementById("taskQ").value.trim().toLowerCase(), ms = document.getElementById("taskMs").value;
   const who = document.getElementById("taskWho").value, sec = document.getElementById("taskSec").value;
   const state = document.getElementById("taskState").value;
-  const rows = sortRows("tasks", d.rows.filter(r => (!ms || msKeys(r.ms).includes(ms)) && (!who || rolesOf(r).includes(who)) &&
-    (!sec || r.section === sec) && (!state || (state === "open" ? !r.done : r.state === state)) &&
-    (!renderRoadmap.ownerOnly || (r.who || "").toLowerCase().includes("owner")) &&
-    (!q || (r.id + " " + r.title + " " + (r.text || "")).toLowerCase().includes(q))), taskKey);
+  // every filter but State; State "open" puts the done/closed rows in the folded section under the table (like Bugs)
+  const base = d.rows.filter(r => (!ms || msKeys(r.ms).includes(ms)) && (!who || rolesOf(r).includes(who)) &&
+    (!sec || r.section === sec) && (!renderRoadmap.ownerOnly || (r.who || "").toLowerCase().includes("owner")) &&
+    (!q || (r.id + " " + r.title + " " + (r.text || "")).toLowerCase().includes(q)));
+  const rows = sortRows("tasks", base.filter(r => !state || (state === "open" ? !r.done : r.state === state)), taskKey);
+  const folded = state === "open" ? sortRows("tasks", base.filter(r => r.done), taskKey) : [];
   markSort("tasks");
   tabCount("tasks", "Tasks", rows.length);
   document.getElementById("taskCount").replaceChildren(rows.length + " of " + d.rows.length,
     renderRoadmap.ownerOnly ? " · only yours - " : "",
     renderRoadmap.ownerOnly ? el("button", {type: "button", class: "link",
       onclick: () => { renderRoadmap.ownerOnly = false; renderRoadmap(); }}, "show all") : "");
-  const tb = document.getElementById("tasks"); tb.replaceChildren();
-  if (!rows.length) tb.append(el("tr", {}, el("td", {colspan: 6, class: "dim"}, "No task matches.")));
-  for (const r of rows) {
-    tb.append(el("tr", {class: "task" + (r.done ? " done" : ""),
-        onclick: () => { openRow = openRow === r.id ? null : r.id; renderTasks(d); }},
-      el("td", {class: "tid"}, el("code", {}, r.id)),
-      el("td", {}, el("span", {class: "ttl" + (openRow === r.id ? " full" : ""), title: openRow === r.id ? "" : r.title}, r.title),
-        r.done ? el("small", {}, "done " + (r.done_date || "") + (r.done_by ? " · " + r.done_by : "")) : null),
-      el("td", {class: "st bstate-" + (r.state || "new").replace(/ /g, "-")}, r.state || "new"),
-      el("td", {}, msShort(r.ms) && msShort(r.ms) !== "-"
-        ? el("span", {class: "chip", title: r.ms}, msShort(r.ms).replace(/^after (\S+)$/, "> $1")) : null),
-      el("td", {}, rolesOf(r).map(x => el("span", {class: "chip role r-" + x, title: r.who}, x))),
-      el("td", {class: "num"}, (r.size || "").replace("S-M", "S/M"))));
-    if (openRow === r.id) tb.append(el("tr", {class: "more"},
-      el("td", {colspan: 6}, r.text || "",
-        r.ms && r.ms !== msShort(r.ms) ? el("div", {}, "Milestone: " + r.ms) : null,
-        r.who ? el("div", {}, "Who: " + r.who) : null,
-        r.where ? el("div", {}, "Where: " + r.where) : null)));
-  }
+  const fill = (tb, list, empty) => {
+    tb.replaceChildren();
+    if (!list.length && empty) tb.append(el("tr", {}, el("td", {colspan: 6, class: "dim"}, empty)));
+    for (const r of list) taskRow(tb, r, d);
+  };
+  fill(document.getElementById("tasks"), rows, "No task matches.");
+  fill(document.getElementById("tasksDone"), folded, "");
+  document.getElementById("tasksDoneDetails").hidden = state !== "open";
+  document.getElementById("tasksDoneCount").textContent = "(" + folded.length + ")";
+}
+function taskRow(tb, r, d) {
+  tb.append(el("tr", {class: "task" + (r.done ? " done" : ""),
+      onclick: () => { openRow = openRow === r.id ? null : r.id; renderTasks(d); }},
+    el("td", {class: "tid"}, el("code", {}, r.id)),
+    el("td", {}, el("span", {class: "ttl" + (openRow === r.id ? " full" : ""), title: openRow === r.id ? "" : r.title}, r.title),
+      r.done && (r.done_date || r.done_by)
+        ? el("small", {}, "done " + (r.done_date || "") + (r.done_by ? " · " + r.done_by : "")) : null),
+    el("td", {class: "st bstate-" + (r.state || "new").replace(/ /g, "-")}, r.state || "new"),
+    el("td", {}, msShort(r.ms) && msShort(r.ms) !== "-"
+      ? el("span", {class: "chip", title: r.ms}, msShort(r.ms).replace(/^after (\S+)$/, "> $1")) : null),
+    el("td", {}, rolesOf(r).map(x => el("span", {class: "chip role r-" + x, title: r.who}, x))),
+    el("td", {class: "num"}, (r.size || "").replace("S-M", "S/M"))));
+  if (openRow === r.id) tb.append(el("tr", {class: "more"},
+    el("td", {colspan: 6}, r.text || "",
+      r.ms && r.ms !== msShort(r.ms) ? el("div", {}, "Milestone: " + r.ms) : null,
+      r.who ? el("div", {}, "Who: " + r.who) : null,
+      r.where ? el("div", {}, "Where: " + r.where) : null)));
 }
 function renderRoadmap() {
   if (!roadmapData) return;
