@@ -297,7 +297,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
           <div class="cells" id="budgetCells"></div>
           <div id="budgetChart"></div>
           <p class="dim legend"><i class="lg plan"></i>plan 14/day <i class="lg use"></i>used
-            <i class="lg proj"></i>at this pace <i class="lg now"></i>now</p>
+            <i class="lg proj"></i>at this pace (<span id="paceHow"></span>) <i class="lg now"></i>now</p>
         </div>
       </div>
     </section>
@@ -841,6 +841,18 @@ function whenShort(iso) {
   const d = new Date(iso);
   return DAY[d.getDay()] + " " + d.toLocaleString(undefined, {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"});
 }
+function paceOf(u, pts, start, now) {
+  if (u.pace_pct_per_h > 0 && u.reading_at && now - new Date(u.reading_at).getTime() <= 45 * 60e3)
+    return {rate: u.pace_pct_per_h, how: "pace of the last 90 min"};
+  const recent = pts.filter(([t]) => t >= now - 6 * 36e5);
+  if (recent.length > 1) {
+    const [t0, p0] = recent[0], [t1, p1] = recent[recent.length - 1];
+    if (t1 - t0 >= 36e5) return {rate: Math.max(0, (p1 - p0) / ((t1 - t0) / 36e5)), how: "pace of the last 6 h"};
+  }
+  const last = pts[pts.length - 1];
+  if (last && last[0] > start) return {rate: last[1] / ((last[0] - start) / 36e5), how: "the week's average pace"};
+  return {rate: null, how: "no readings yet"};
+}
 function renderBudget(u) {
   const box = document.getElementById("budget"), now = Date.now();
   const stale = !u.reading_at || now - new Date(u.reading_at).getTime() > 45 * 60e3;
@@ -848,18 +860,24 @@ function renderBudget(u) {
   document.getElementById("budgetAge").textContent = u.reading_at
     ? "reading " + ago(u.reading_at) + (stale ? " - not fresh" : "") : "no reading";
   const h5Over = u.h5_reset && new Date(u.h5_reset).getTime() <= now;
-  const afterReset = u.week_hits_100 && u.week_reset && new Date(u.week_hits_100) > new Date(u.week_reset);
+  const end = u.week_reset ? new Date(u.week_reset).getTime() : 0, start = end - 7 * 864e5;
+  const pts = (u.series || []).map(([at, p]) => [new Date(at).getTime(), p]).filter(([t]) => t >= start && t <= end);
+  // the pace: the feed's (last 90 min of readings) when it has one; else the readings of the last 6 hours; else the
+  // week's average so far - with hourly readings the 90-minute pace is often missing or 0
+  const p = paceOf(u, pts, start, now), last = pts[pts.length - 1];
+  const hits = p.rate > 0 && last && last[1] < 100 ? last[0] + (100 - last[1]) / p.rate * 36e5 : null;
+  const afterReset = hits && end && hits > end;
   const cell = (label, value, cls) => el("div", {class: "cell"}, el("span", {}, label), el("b", {class: cls || ""}, value));
   document.getElementById("budgetCells").replaceChildren(
     cell("5h", u.h5_pct == null ? "-" : (h5Over ? 0 : u.h5_pct) + "%"),
     cell("week", u.week_pct == null ? "-" : u.week_pct + "%"),
-    cell("pace", u.pace_pct_per_h == null || stale ? "-" : u.pace_pct_per_h + "%/h"),
-    cell("week hits 100%", !u.week_hits_100 || stale ? "-" : whenShort(u.week_hits_100) + (afterReset ? " (after reset)" : ""),
-         "small" + (!afterReset && u.week_hits_100 && !stale ? " warn" : "")));
+    el("div", {class: "cell", title: p.how}, el("span", {}, "pace"), el("b", {}, p.rate == null ? "-" : p.rate.toFixed(1) + "%/h")),
+    cell("week hits 100%", !hits ? "-" : whenShort(new Date(hits).toISOString()) + (afterReset ? " (after reset)" : ""),
+         "small" + (hits && !afterReset ? " warn" : "")));
+  document.getElementById("paceHow").textContent = p.how;
   const chart = document.getElementById("budgetChart");
   if (!u.week_reset) { chart.replaceChildren(el("p", {class: "dim"}, "No week window yet.")); return; }
   const W = 560, H = 230, L = 34, R = 10, T = 10, B = 22;
-  const end = new Date(u.week_reset).getTime(), start = end - 7 * 864e5;
   const X = t => L + (W - L - R) * (t - start) / (end - start);
   const Y = p => T + (H - T - B) * (1 - Math.max(0, Math.min(100, p)) / 100);
   const s = [];
@@ -871,11 +889,10 @@ function renderBudget(u) {
     if (d < 7) s.push(`<text x="${X(t + 432e5)}" y="${H - 7}" class="ax" text-anchor="middle">${DAY[new Date(t).getDay()]}</text>`);
   }
   s.push(`<line x1="${X(start)}" y1="${Y(0)}" x2="${X(end)}" y2="${Y((u.plan_per_day || 14) * 7)}" class="plan"/>`);
-  const pts = (u.series || []).map(([at, p]) => [new Date(at).getTime(), p]).filter(([t]) => t >= start && t <= end);
   if (pts.length > 1) s.push(`<polyline points="${pts.map(([t, p]) => X(t) + "," + Y(p)).join(" ")}" class="use"/>`);
   for (const [t, p] of pts) s.push(`<circle cx="${X(t)}" cy="${Y(p)}" r="2.2" class="dot"/>`);
-  const rate = u.pace_pct_per_h;
-  if (rate > 0 && pts.length && !stale) {
+  const rate = p.rate;
+  if (rate > 0 && pts.length) {
     let [t0, p0] = pts[pts.length - 1], t1 = t0 + (100 - p0) / rate * 36e5, p1 = 100;
     if (t1 > end) { p1 = p0 + rate * (end - t0) / 36e5; t1 = end; }
     s.push(`<line x1="${X(t0)}" y1="${Y(p0)}" x2="${X(t1)}" y2="${Y(p1)}" class="proj"/>`);
