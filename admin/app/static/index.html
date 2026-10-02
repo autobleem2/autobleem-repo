@@ -185,7 +185,10 @@ nav.tabs a.alarm:after{content:"";display:inline-block;width:.5rem;height:.5rem;
 .badge{display:inline-block;font-size:.72rem;font-weight:600;padding:0 .5rem;color:var(--dim);white-space:nowrap;--cut:5px}
 .state-working{color:var(--rel)}.state-waiting{color:var(--pre)}.state-asleep,.state-unknown{color:var(--dim)}
 td.tid,code.tid{white-space:nowrap}
-tr.gap td{height:1.4rem;padding:0;border:0;background:none}
+tr.mshead td{padding:1.6rem .6rem .35rem;border-bottom:2px solid var(--cyan);background:none;cursor:default}
+tr.mshead:first-child td{padding-top:.4rem}
+tr.mshead .msname{font-weight:600;font-size:1.05rem;letter-spacing:.06em;text-transform:uppercase;color:var(--cyan)}
+tr.mshead .mscount{margin-left:.6rem;color:var(--dim);font-size:.85rem}
 tr.task{cursor:pointer}tr.task.done td{opacity:.55}tr.task.done .ttl{text-decoration:line-through}
 /* the Tasks tab: fixed narrow columns, the title two lines at most (all of it when the row is open), short chips */
 table.tasks{table-layout:fixed}
@@ -1141,9 +1144,14 @@ function renderTasks(d) {
     tb.replaceChildren();
     if (!list.length && empty) tb.append(el("tr", {}, el("td", {colspan: 6, class: "dim"}, empty)));
     let prev = null;
+    const heads = grouped && tb.id === "tasks";
+    const counts = {};
+    if (heads) for (const r of list) counts[taskKey(r, "ms")] = (counts[taskKey(r, "ms")] || 0) + 1;
     for (const r of list) {
-      const g = grouped && tb.id === "tasks" ? taskKey(r, "ms") : null;
-      if (prev !== null && g !== prev) tb.append(el("tr", {class: "gap"}, el("td", {colspan: 6})));
+      const g = heads ? taskKey(r, "ms") : null;
+      if (heads && g !== prev) tb.append(el("tr", {class: "mshead"}, el("td", {colspan: 6},
+        el("span", {class: "msname"}, g < MS.length ? MS[g][1] : "no milestone"),
+        el("span", {class: "mscount"}, counts[g] + (counts[g] === 1 ? " task" : " tasks")))));
       prev = g;
       taskRow(tb, r, d);
     }

@@ -62,6 +62,8 @@ def build_github():
          "labels": [{"name": "self-hosted"}, {"name": "windows"}, {"name": "pcusb"}]},
     ]
     gh.contents["docs/bugs.md"] = BUGS_MD
+    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "fixtures", "todo_state.md"), encoding="utf-8") as f:
+        gh.contents["docs/todo.md"] = f.read()  # the Tasks tab preview
     return gh
 
 
