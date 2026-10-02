@@ -46,6 +46,8 @@ header.top .brand:hover{text-decoration:none}
 header.top .bar nav{margin-left:auto;display:flex;gap:1rem;font-size:.95rem;align-items:center;flex-wrap:wrap}
 header.top .bar nav a{color:var(--steel);white-space:nowrap}
 header.top .bar nav a:hover{color:var(--cyan);text-decoration:none}
+header.top a.toplink{color:var(--steel);font-size:.95rem;white-space:nowrap}
+header.top a.toplink:hover{color:var(--cyan);text-decoration:none}
 /* the avatar and its menu (Store, notifications, the download page, sign out) */
 .usermenu{position:relative}
 button.avatar{width:2.2rem;height:2.2rem;padding:0;border-radius:50%;clip-path:none;overflow:hidden;
@@ -257,6 +259,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
 <body>
 <header class="top"><div class="bar">
   <a class="brand" href="/"><img src="/assets/emblem.png" srcset="/assets/emblem@2x.png 2x" alt=""> AutoBleem 2 <span>Admin</span></a>
+  <a class="toplink" href="/repository/">Download page</a>
   <nav><div class="usermenu">
     <button id="avatarBtn" type="button" class="avatar" aria-haspopup="true" aria-expanded="false" title="Your menu">
       <img id="avatarImg" alt=""><span id="avatarInitial"></span></button>
@@ -264,7 +267,6 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
       <div class="who"><b id="me"></b><small id="meRole"></small></div>
       <a href="#store" data-menu>Store</a>
       <button id="notif" type="button" class="item" title="Desktop notifications when a build finishes">Notifications: off</button>
-      <a href="/repository/">Download page</a>
       <a href="/oauth2/sign_out?rd=/" class="out">Sign out</a>
     </div></div></nav>
 </div>
