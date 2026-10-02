@@ -965,6 +965,11 @@ function hookSort(table, render) {
     render();
   });
 }
+// a tab's label with the number of rows its table shows now (it follows the filters)
+function tabCount(tab, label, n) {
+  const a = document.querySelector('nav.tabs a[data-tab="' + tab + '"]');
+  if (a) a.textContent = label + " (" + n + ")";
+}
 const TASK_STATE_ORDER = {"new": 0, "in progress": 1, "done": 2, "closed": 3};
 function taskKey(r, key) {
   if (key === "id") return (r.id || "").replace(/-?\d+$/, "") + "-" + String(idNum(r.id)).padStart(5, "0");
@@ -983,6 +988,7 @@ function renderTasks(d) {
     (!renderRoadmap.ownerOnly || (r.who || "").toLowerCase().includes("owner")) &&
     (!q || (r.id + " " + r.title + " " + (r.text || "")).toLowerCase().includes(q))), taskKey);
   markSort("tasks");
+  tabCount("tasks", "Tasks", rows.length);
   document.getElementById("taskCount").replaceChildren(rows.length + " of " + d.rows.length,
     renderRoadmap.ownerOnly ? " · only yours - " : "",
     renderRoadmap.ownerOnly ? el("button", {type: "button", class: "link",
@@ -1093,9 +1099,8 @@ function renderBugs() {
   const closedTb = document.getElementById("bugsClosed"); closedTb.replaceChildren();
   for (const b of closed) closedTb.append(bugRow(b));
   document.getElementById("bugsClosedCount").textContent = "(" + closed.length + ")";
-  const allOpenCount = bugsData.filter(bugIsOpen).length;
-  const tab = document.querySelector('nav.tabs a[data-tab="bugs"]');
-  if (tab) tab.textContent = "Bugs (" + allOpenCount + ")";
+  // the tab's number follows the filters: the open bugs shown, or every bug shown when a state is picked
+  tabCount("bugs", "Bugs", state ? filtered.length : open.length);
 }
 async function loadBugs() {
   loadBugs.loaded = true;
@@ -1188,6 +1193,7 @@ async function start() {
   initTabs();
   if (canAct) preview();
   refresh(); loadSlow(); loadAudit(); loadBugs();
+  if (!loadRoadmap.loaded) loadRoadmap();  // the Tasks tab's number shows from the start, like the Bugs tab's
   setInterval(loadSlow, 60000); setInterval(loadAudit, 60000);
   setInterval(() => { if (loadRoadmap.loaded) loadRoadmap(); }, 60000);
   setInterval(loadBugs, 60000);
