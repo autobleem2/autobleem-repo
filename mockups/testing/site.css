@@ -262,6 +262,17 @@ input::placeholder,textarea::placeholder{color:#6f7d8b}
   padding:.4rem 0;margin:0 0 .4rem;display:flex;align-items:center;gap:.8rem;font-size:.85rem;color:var(--dim)}
 .progress .bar{flex:1;height:4px;background:var(--line-soft);position:relative}
 .progress .bar i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--cyan),var(--magenta))}
+.idrow{display:flex;gap:1rem;align-items:center}
+.idrow input{max-width:15rem;font-family:ui-monospace,Consolas,monospace;font-size:1.2rem;letter-spacing:.15em}
+.stat{margin:.2rem 0 1rem}
+ol.stages{list-style:none;margin:0 0 1rem;padding:0 0 0 .4rem}
+ol.stages li{position:relative;margin:0;padding:.2rem 0 1rem 1.6rem;border-left:2px solid var(--line-soft)}
+ol.stages li:last-child{padding-bottom:.2rem}
+ol.stages li:before{content:"";position:absolute;left:-7px;top:.45rem;width:12px;height:12px;border-radius:50%;background:var(--bg);border:2px solid var(--dim)}
+ol.stages li.done:before{background:var(--rel);border-color:var(--rel)}
+ol.stages li.now:before{background:var(--magenta);border-color:var(--magenta);box-shadow:0 0 8px var(--magenta)}
+ol.stages li b{color:#fff;font-weight:600}
+ol.stages li small{display:block;color:var(--dim);font-size:.85rem}
 .sub{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;margin:1.2rem 0}
 .idbox{display:inline-block;font-family:ui-monospace,Consolas,monospace;font-size:1.8rem;letter-spacing:.2em;color:#fff;
   background:rgba(0,0,0,.35);border:1px solid var(--line);padding:.4rem 1.1rem;margin:.4rem 0}
