@@ -361,7 +361,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
         <tbody id="bugsOpen"></tbody>
       </table></div>
       <details id="bugsClosedDetails" class="folded">
-        <summary>Closed / wontfix / duplicate <span id="bugsClosedCount" class="dim"></span></summary>
+        <summary>Done / closed / wontfix / duplicate <span id="bugsClosedCount" class="dim"></span></summary>
         <div class="scroll"><table class="bugs">
           <colgroup><col class="c-id"><col><col class="c-pl"><col class="c-sev"><col class="c-st"><col class="c-found"><col class="c-fix"></colgroup>
           <thead><tr><th>BUG</th><th>Title</th><th>Platform</th><th>Severity</th><th>State</th><th>Found</th><th>Fix</th></tr></thead>
@@ -1186,7 +1186,7 @@ hookSort("tasks", renderRoadmap);
 // -------------------------------------------------------------------------------- Bugs tab (PLATFORM-9)
 const SEV_ORDER = {blocker: 0, major: 1, minor: 2};
 let bugsData = null;
-function bugIsOpen(b) { return !["closed", "wontfix", "duplicate"].includes(b.state); }
+function bugIsOpen(b) { return !["done", "closed", "wontfix", "duplicate"].includes(b.state); }
 function bugMatchesPlatform(b, p) { return !p || b.platforms.includes(p) || (b.platforms.length === 1 && b.platforms[0] === "all"); }
 // "console session 318, block B3, 2026-09-27; fixed in ..." -> "27.09 PSC": the day + where or by whom it was seen
 // (the first tag that matches); all of it on hover and in the opened row

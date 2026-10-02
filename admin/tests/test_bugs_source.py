@@ -133,10 +133,10 @@ def test_todays_four_states():
     bugs = _today()
     assert {b["state"] for b in bugs.values()} == {"new", "in progress", "done", "closed", "duplicate"}
     open_bugs, closed_bugs = sort_bugs(list(bugs.values()))
-    # `done` still waits for the check, so it stays in the open list; blocker > major > minor > trivial
-    assert [b["id"] for b in open_bugs] == ["BUG-1", "BUG-6", "BUG-21", "BUG-23", "BUG-30", "BUG-9",
-                                           "BUG-13", "BUG-25", "BUG-33"]
-    assert [b["id"] for b in closed_bugs] == ["BUG-11", "BUG-12", "BUG-38", "BUG-40"]
+    # `done` is folded away with the closed ones (like the Tasks tab); blocker > major > minor > trivial
+    assert [b["id"] for b in open_bugs] == ["BUG-6", "BUG-21", "BUG-30", "BUG-13", "BUG-25"]
+    assert [b["id"] for b in closed_bugs] == ["BUG-1", "BUG-9", "BUG-11", "BUG-12", "BUG-23", "BUG-33",
+                                              "BUG-38", "BUG-40"]
 
 
 def test_todays_platform_cells_with_notes():

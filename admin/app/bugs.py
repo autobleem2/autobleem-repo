@@ -102,14 +102,14 @@ def parse_bugs(markdown_text):
 
 
 def is_open(bug):
-    """Everything not closed/wontfix/duplicate - the Bugs tab's main list. `done` is open: the fix is merged
-    but the check is left, and only QA closes a bug."""
-    return bug["state"] not in ("closed", "wontfix", "duplicate")
+    """Everything not done/closed/wontfix/duplicate - the Bugs tab's main list. `done` (the fix is merged, the
+    check is left) is folded away like a done task on the Tasks tab."""
+    return bug["state"] not in ("done", "closed", "wontfix", "duplicate")
 
 
 def sort_bugs(bugs):
     """(open_bugs, closed_bugs): open first, sorted blocker > major > minor > trivial then by number; the rest
-    (closed/wontfix/duplicate, for the folded section) sorted by number."""
+    (done/closed/wontfix/duplicate, for the folded section) sorted by number."""
     open_bugs = sorted((b for b in bugs if is_open(b)),
                        key=lambda b: (SEVERITY_ORDER.get(b["severity"], 99), b["number"]))
     closed_bugs = sorted((b for b in bugs if not is_open(b)), key=lambda b: b["number"])
