@@ -226,6 +226,8 @@ tr.task.done td.st{opacity:1}
 @media (max-width:56rem){.split{grid-template-columns:1fr}}
 #budget h3 small{font-weight:500;margin-left:.4rem}
 #budget .cells{display:grid;grid-template-columns:1fr 1fr 1fr 1.6fr;gap:.4rem;margin:.3rem 0 .6rem}
+#budget .cells.models{grid-template-columns:1.6fr repeat(4,1fr);margin-top:-.2rem}
+#budget .cell small{display:block;color:var(--dim);font-size:.74rem;white-space:nowrap}
 #budget .cell{background:rgba(18,22,28,.45);box-shadow:inset 0 0 0 1px var(--line-soft);padding:.3rem .55rem}
 #budget .cell span{display:block;color:var(--dim);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase}
 #budget .cell b{display:block;font-size:1.35rem;font-weight:600;color:#fff;white-space:nowrap}
@@ -295,6 +297,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
         <div id="budget">
           <h3>Budget <small class="dim" id="budgetAge"></small></h3>
           <div class="cells" id="budgetCells"></div>
+          <div class="cells models" id="modelCells"></div>
           <div id="budgetChart"></div>
           <p class="dim legend"><i class="lg plan"></i>plan 14/day <i class="lg use"></i>used
             <i class="lg proj"></i>at this pace (<span id="paceHow"></span>) <i class="lg now"></i>now</p>
@@ -853,6 +856,25 @@ function paceOf(u, pts, start, now) {
   if (last && last[0] > start) return {rate: last[1] / ((last[0] - start) / 36e5), how: "the week's average pace"};
   return {rate: null, how: "no readings yet"};
 }
+// The models working right now: the total (sessions = people the feed marks working, agents = contractors in flight
+// against the cap) and one cell per model the feed lists, with that model's weekly window when the feed has one.
+function renderModels(m) {
+  const box = document.getElementById("modelCells");
+  if (!m) { box.replaceChildren(); return; }
+  const n = v => v == null ? "-" : v, weight = m.agents_weight != null && m.agents_weight !== m.agents;
+  const sub = "sessions " + n(m.sessions) + " · agents " + n(m.agents) + (m.agent_cap != null ? "/" + m.agent_cap : "");
+  const full = m.agent_cap != null && (m.agents_weight == null ? m.agents : m.agents_weight) >= m.agent_cap;
+  const cells = [el("div", {class: "cell", title: "Models working now: sessions (people) + agents (contractors). The agents' cap counts a senior as 2" +
+    (weight ? " - now " + m.agents_weight + " of " + m.agent_cap : "")},
+    el("span", {}, "models in use"), el("b", {class: full ? "warn" : ""}, n(m.in_use)), el("small", {}, sub))];
+  for (const [name, count] of Object.entries(m.by_model || {})) {
+    const wk = (m.by_model_week || {})[name];
+    cells.push(el("div", {class: "cell", title: name + ": " + count + " in use now" + (wk != null ? ", weekly window " + wk + "%" : "")},
+      el("span", {}, name), el("b", {}, count), wk != null ? el("small", {}, "week " + wk + "%") : null));
+  }
+  box.replaceChildren(...cells);
+}
+
 function renderBudget(u) {
   const box = document.getElementById("budget"), now = Date.now();
   const stale = !u.reading_at || now - new Date(u.reading_at).getTime() > 45 * 60e3;
@@ -874,6 +896,7 @@ function renderBudget(u) {
     el("div", {class: "cell", title: p.how}, el("span", {}, "pace"), el("b", {}, p.rate == null ? "-" : p.rate.toFixed(1) + "%/h")),
     cell("week hits 100%", !hits ? "-" : whenShort(new Date(hits).toISOString()) + (afterReset ? " (after reset)" : ""),
          "small" + (hits && !afterReset ? " warn" : "")));
+  renderModels(u.models);
   document.getElementById("paceHow").textContent = p.how;
   const chart = document.getElementById("budgetChart");
   if (!u.week_reset) { chart.replaceChildren(el("p", {class: "dim"}, "No week window yet.")); return; }

@@ -159,4 +159,23 @@ def _budget(b):
             "stop_day": b.get("stop_day"),
             # the chart (the laptop panel's budget tile): this week's readings, the window's end, the plan line
             "reading_at": b.get("reading_at"), "h5_reset": b.get("h5_reset"), "week_reset": b.get("week_reset"),
-            "week_hits_100": b.get("week_hits_100"), "plan_per_day": b.get("plan_per_day"), "series": series}
+            "week_hits_100": b.get("week_hits_100"), "plan_per_day": b.get("plan_per_day"), "series": series,
+            "models": _models(b.get("models"))}
+
+
+def _count(v):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def _models(m):
+    """The models in use right now (sessions + agents) and the agents' cap; None when the feed has no such block.
+    by_model / by_model_week keep the feed's own model names - the page prints whatever the feed lists."""
+    if not isinstance(m, dict):
+        return None
+    by = m.get("by_model") if isinstance(m.get("by_model"), dict) else {}
+    wk = m.get("by_model_week") if isinstance(m.get("by_model_week"), dict) else {}
+    return {"in_use": _count(m.get("in_use")), "sessions": _count(m.get("sessions")),
+            "agents": _count(m.get("agents")), "agents_weight": _count(m.get("agents_weight")),
+            "agent_cap": _count(m.get("agent_cap")),
+            "by_model": {str(k): _count(v) for k, v in by.items() if _count(v) is not None},
+            "by_model_week": {str(k): _count(v) for k, v in wk.items() if _count(v) is not None}}

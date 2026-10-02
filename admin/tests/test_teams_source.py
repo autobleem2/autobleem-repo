@@ -106,6 +106,20 @@ def test_an_unreadable_feed_is_no_source(tmp_path):
     assert source(tmp_path, feed={"sessions": []}).teams(NOW)["status"] is None
 
 
+def test_models_in_use_are_passed_on_and_cleaned(tmp_path):
+    models = {"in_use": 3, "sessions": 1, "agents": 2, "agents_weight": 3, "agent_cap": 6,
+              "by_model": {"Opus": 2, "Sonnet": 1, "Haiku": 0, "Fable": 0, "Bad": "x"},
+              "by_model_week": {"Fable": 12}}
+    got = source(tmp_path, dict(FEED, budget=dict(FEED["budget"], models=models))).teams(NOW)["status"]["budget"]
+    assert got["models"]["in_use"] == 3 and got["models"]["agent_cap"] == 6
+    assert got["models"]["by_model"] == {"Opus": 2, "Sonnet": 1, "Haiku": 0, "Fable": 0}
+    assert got["models"]["by_model_week"] == {"Fable": 12}
+
+
+def test_a_feed_without_models_has_none(tmp_path):
+    assert source(tmp_path, FEED).teams(NOW)["status"]["budget"]["models"] is None
+
+
 def test_junk_entries_do_not_break_the_page_data(tmp_path):
     feed = dict(FEED, sessions=["x", {"name": "Lead C"}], contractors=[None], budget="x", waiting_on_owner=[])
     got = source(tmp_path, feed).teams(NOW)["status"]
