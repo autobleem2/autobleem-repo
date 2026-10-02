@@ -277,7 +277,6 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
   <a href="#releases" data-tab="releases">Releases</a>
   <a href="#builds" data-tab="builds">Builds</a>
   <a href="#server" data-tab="server">Server</a>
-  <a href="#audit" data-tab="audit">Audit</a>
 </nav>
 </header>
 <main>
@@ -492,9 +491,6 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
       <h2>Health</h2>
       <table><tbody id="health"></tbody></table>
     </section>
-  </section>
-
-  <section id="tab-audit" class="tab-content">
     <section class="panel">
       <h2>Audit log</h2>
       <div class="scroll"><table>
@@ -512,7 +508,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
 const API = "/admin/api/";let canAct = false, firstStatus = true;
 const seenActive = new Set();
 const selectedJob = {}; // run id -> job name selected in that card
-const TABS = ["roadmap", "tasks", "bugs", "releases", "builds", "store", "server", "audit"];
+const TABS = ["roadmap", "tasks", "bugs", "releases", "builds", "store", "server"];  // the audit log lives on the Server tab (an old #audit link opens it)
 
 function el(tag, attrs, ...kids) {
   const e = document.createElement(tag);
@@ -1228,6 +1224,7 @@ document.getElementById("bugPlatform").addEventListener("change", renderBugs);
 // -------------------------------------------------------------------------------- tabs
 function currentTab() {
   const h = (location.hash || "").replace("#", "");
+  if (h === "audit") return "server";
   return TABS.includes(h) ? h : null;
 }
 function showTab(name) {
