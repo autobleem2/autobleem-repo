@@ -371,6 +371,13 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
         <thead><tr><th>Repository</th><th>What</th><th>Result</th><th>Took</th><th>When</th><th></th></tr></thead>
         <tbody id="recent"></tbody>
       </table></div>
+      <details id="recentMoreDetails" class="folded">
+        <summary>Older <span id="recentMoreCount" class="dim"></span></summary>
+        <div class="scroll"><table>
+          <thead><tr><th>Repository</th><th>What</th><th>Result</th><th>Took</th><th>When</th><th></th></tr></thead>
+          <tbody id="recentMore"></tbody>
+        </table></div>
+      </details>
     </section>
   </section>
 
@@ -378,6 +385,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
     <section class="panel">
       <h2>Channels</h2>
       <table><tbody id="channels"></tbody></table>
+      <div class="row actonly"><button id="pageGo" type="button">Republish the download page</button></div>
     </section>
 
     <section class="panel actonly">
@@ -439,11 +447,6 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
         <button id="withdrawGo" type="button" class="danger">Withdraw</button>
       </div>
       <p class="dim">a stable release is not withdrawn from here. See Channels above for the current versions.</p>
-    </section>
-
-    <section class="panel actonly">
-      <h2>Site</h2>
-      <div class="row"><button id="pageGo" type="button">Republish the download page</button></div>
     </section>
   </section>
 
@@ -606,11 +609,16 @@ function renderRunners(runners) {
     el("td", {}, (r.labels || []).join(", ")),
     el("td", {}, r.job ? (r.job.repo + " · " + r.job.job) : el("span", {class: "dim"}, "-"))));
 }
+const FINISHED_SHOWN = 4;  // the newest four in view, the older ones folded under them
 function renderFinished(recent) {
-  const recentTb = document.getElementById("recent"); recentTb.replaceChildren();
-  for (const r of recent) {
-    const c = r.conclusion;
-    recentTb.append(el("tr", {}, el("td", {}, r.repo), el("td", {}, r.workflow, sub(r)),
+  const recentTb = document.getElementById("recent"), moreTb = document.getElementById("recentMore");
+  recentTb.replaceChildren(); moreTb.replaceChildren();
+  const older = recent.length - FINISHED_SHOWN;
+  document.getElementById("recentMoreDetails").hidden = older <= 0;
+  document.getElementById("recentMoreCount").textContent = older > 0 ? "(" + older + ")" : "";
+  for (const [n, r] of recent.entries()) {
+    const c = r.conclusion, tb = n < FINISHED_SHOWN ? recentTb : moreTb;
+    tb.append(el("tr", {}, el("td", {}, r.repo), el("td", {}, r.workflow, sub(r)),
       el("td", {}, el("span", {class: c === "success" ? "ok" : c === "failure" ? "bad" : "warn"}, c || r.status)),
       el("td", {class: "num"}, dur(r.elapsed)), el("td", {class: "when"}, when(r.updated)),
       el("td", {}, logs(r), " ", canAct && c !== "success" ? el("button", {type: "button",
