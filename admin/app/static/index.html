@@ -46,6 +46,25 @@ header.top .brand:hover{text-decoration:none}
 header.top .bar nav{margin-left:auto;display:flex;gap:1rem;font-size:.95rem;align-items:center;flex-wrap:wrap}
 header.top .bar nav a{color:var(--steel);white-space:nowrap}
 header.top .bar nav a:hover{color:var(--cyan);text-decoration:none}
+/* the avatar and its menu (Store, notifications, the download page, sign out) */
+.usermenu{position:relative}
+button.avatar{width:2.2rem;height:2.2rem;padding:0;border-radius:50%;clip-path:none;overflow:hidden;
+  background:rgba(54,217,224,.14);box-shadow:inset 0 0 0 1px var(--line)}
+button.avatar:after{display:none}
+button.avatar:hover,button.avatar[aria-expanded=true]{box-shadow:0 0 0 2px var(--magenta);background:rgba(255,70,170,.16)}
+button.avatar img{display:none;width:100%;height:100%;object-fit:cover}
+button.avatar span{display:flex;width:100%;height:100%;align-items:center;justify-content:center;color:#fff;font-weight:600}
+.menu{position:absolute;right:0;top:calc(100% + .45rem);min-width:12rem;z-index:20;padding:.35rem 0;
+  background:linear-gradient(180deg,var(--panel-top),var(--panel-bot));box-shadow:inset 0 0 0 1px var(--line),0 8px 24px rgba(0,0,0,.45)}
+.menu .who{padding:.4rem .9rem .5rem;border-bottom:1px solid var(--line-soft);margin-bottom:.25rem}
+.menu .who b{display:block;color:#fff}.menu .who small{color:var(--dim);font-size:.8rem}
+.menu a,.menu button.item{display:block;width:100%;text-align:left;padding:.4rem .9rem;color:var(--ink);font-weight:500;
+  font-size:.92rem;background:none;clip-path:none;white-space:nowrap}
+.menu button.item:after{display:none}
+.menu a:hover,.menu button.item:hover{background:rgba(54,217,224,.1);color:#fff;text-decoration:none}
+.menu a.out{border-top:1px solid var(--line-soft);margin-top:.25rem}
+header.top .bar nav .menu a,header.top .menu button.item{color:var(--ink);font-weight:500;font-size:.92rem}
+header.top .bar nav .menu a:hover,header.top .menu button.item:hover{color:#fff}
 nav.tabs{max-width:68rem;margin:0 auto;padding:0 1rem;display:flex;gap:.2rem;overflow-x:auto}
 nav.tabs a{color:var(--steel);padding:.5rem .95rem .55rem;font-weight:600;white-space:nowrap;font-size:.95rem;
   box-shadow:inset 0 -3px 0 transparent}
@@ -221,7 +240,7 @@ tr.task.done td.st{opacity:1}
 .actonly{display:none}
 body.can-act .actonly{display:block}
 body.can-act button.actonly{display:inline-block}
-@media (max-width:40rem){td,th{padding:.4rem .35rem}header.top .bar nav{margin-left:0;gap:.8rem;font-size:.88rem}#me{display:none}
+@media (max-width:40rem){td,th{padding:.4rem .35rem}header.top .bar nav{margin-left:auto;gap:.8rem;font-size:.88rem}
   nav.tabs a{padding:.45rem .65rem;font-size:.9rem}.panel{padding-left:.8rem;padding-right:.8rem}}
 /* how-to pages for what the owner does himself: a modal over the page */
 button.howto{width:1.5rem;height:1.5rem;padding:0;margin-left:.4rem;color:var(--cyan);line-height:1;vertical-align:middle;--cut:5px}
@@ -238,9 +257,16 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
 <body>
 <header class="top"><div class="bar">
   <a class="brand" href="/"><img src="/assets/emblem.png" srcset="/assets/emblem@2x.png 2x" alt=""> AutoBleem 2 <span>Admin</span></a>
-  <nav><span id="me" class="dim"></span><a href="/repository/">Download page</a>
-    <button id="notif" type="button" title="Desktop notifications when a build finishes">Notify me</button>
-    <a href="/oauth2/sign_out?rd=/">Sign out</a></nav>
+  <nav><div class="usermenu">
+    <button id="avatarBtn" type="button" class="avatar" aria-haspopup="true" aria-expanded="false" title="Your menu">
+      <img id="avatarImg" alt=""><span id="avatarInitial"></span></button>
+    <div id="userMenu" class="menu" hidden>
+      <div class="who"><b id="me"></b><small id="meRole"></small></div>
+      <a href="#store" data-menu>Store</a>
+      <button id="notif" type="button" class="item" title="Desktop notifications when a build finishes">Notify me</button>
+      <a href="/repository/">Download page</a>
+      <a href="/oauth2/sign_out?rd=/" class="out">Sign out</a>
+    </div></div></nav>
 </div>
 <nav class="tabs" id="tabs">
   <a href="#roadmap" data-tab="roadmap">Roadmap</a>
@@ -248,7 +274,6 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
   <a href="#bugs" data-tab="bugs">Bugs</a>
   <a href="#releases" data-tab="releases">Releases</a>
   <a href="#builds" data-tab="builds">Builds</a>
-  <a href="#store" data-tab="store">Store</a>
   <a href="#server" data-tab="server">Server</a>
   <a href="#audit" data-tab="audit">Audit</a>
 </nav>
@@ -1221,7 +1246,20 @@ async function start() {
   const me = await api("me");
   canAct = me.can_act;
   document.body.classList.toggle("can-act", canAct);
-  document.getElementById("me").textContent = me.login + (canAct ? " · release team" : " · read only");
+  document.getElementById("me").textContent = me.login;
+  document.getElementById("meRole").textContent = canAct ? "release team" : "read only";
+  // the avatar: the GitHub picture of the login, its first letter when the picture does not load
+  const img = document.getElementById("avatarImg"), initial = document.getElementById("avatarInitial");
+  initial.textContent = (me.login || "?").slice(0, 1).toUpperCase();
+  img.onload = () => { img.style.display = "block"; initial.style.display = "none"; };
+  img.onerror = () => { img.style.display = "none"; initial.style.display = "flex"; };
+  img.src = "https://github.com/" + encodeURIComponent(me.login) + ".png?size=64";
+  const btn = document.getElementById("avatarBtn"), menu = document.getElementById("userMenu");
+  const openMenu = on => { menu.hidden = !on; btn.setAttribute("aria-expanded", on ? "true" : "false"); };
+  btn.onclick = e => { e.stopPropagation(); openMenu(menu.hidden); };
+  menu.onclick = e => { if (e.target.closest("a, button")) openMenu(false); };
+  document.addEventListener("click", e => { if (!e.target.closest(".usermenu")) openMenu(false); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") openMenu(false); });
   document.getElementById("notif").onclick = () => window.Notification && Notification.requestPermission()
     .then(p => toast(p === "granted" ? "Desktop notifications are on while this page is open."
                                      : "Notifications were not allowed."));
