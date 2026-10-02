@@ -64,15 +64,26 @@ def test_sessions_and_open_questions_for_the_owner(tmp_path):
 def test_a_session_without_slots_shows_its_task(tmp_path):
     feed = dict(FEED, contractors=[])
     a = source(tmp_path, feed).teams(NOW)["status"]["teams"][0]
-    assert a["items"] == [{"id": "TASK-1", "what": "first task", "worker": "", "since": ""}]
+    assert a["items"] == [{"id": "TASK-1", "what": "first task", "worker": "", "kind": "", "since": ""}]
 
 
-def test_a_contractor_line_carries_its_worker_and_start(tmp_path):
+def test_a_contractor_line_carries_its_worker_kind_and_start(tmp_path):
     feed = dict(FEED, contractors=[{"lead": "Lead A", "max_slots": 2, "queued": [], "in_flight": [
-        {"id": "TASK-1", "desc": "first task", "worker": "Dev One", "since": "2026-10-01T13:20:00+00:00"}]}])
+        {"id": "TASK-1", "desc": "first task", "worker": "Dev One", "kind": "tester",
+         "since": "2026-10-01T13:20:00+00:00"}]}])
     a = source(tmp_path, feed).teams(NOW)["status"]["teams"][0]
-    assert a["items"] == [{"id": "TASK-1", "what": "first task", "worker": "Dev One",
+    assert a["items"] == [{"id": "TASK-1", "what": "first task", "worker": "Dev One", "kind": "tester",
                            "since": "2026-10-01T13:20:00+00:00"}]
+
+
+def test_a_crunch_contractor_hangs_under_its_hirer(tmp_path):
+    feed = dict(FEED, contractors=[], sessions=[
+        {"name": "PM", "role": "Program Manager", "model": "m", "task_id": "", "task": "hub", "state": "working"},
+        {"name": "Dev One", "role": "developer", "model": "", "task_id": "TASK-3", "task": "third",
+         "state": "working", "under": "PM", "kind": "developer", "since": "2026-10-01T13:30:00+00:00"}])
+    pm, dev = source(tmp_path, feed).teams(NOW)["status"]["teams"]
+    assert (pm["under"], dev["under"], dev["kind"], dev["team"]) == ("", "PM", "developer", "developer")
+    assert dev["items"][0]["since"] == "2026-10-01T13:30:00+00:00"
 
 
 def test_a_stale_feed_is_no_source(tmp_path):

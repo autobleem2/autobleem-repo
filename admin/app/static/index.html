@@ -163,6 +163,9 @@ td.st{white-space:nowrap;font-weight:600;font-size:.86rem}
 tr.task.done td.st{opacity:1}
 .stale{color:var(--warn);font-weight:600}
 #teams td{font-size:.95rem}#teams .job+.job{margin-top:.35rem}#teams td:first-child{white-space:nowrap;font-weight:600}
+#teams tr.child td{border-top:0}#teams tr.child td:first-child{padding-left:1.1rem;font-weight:500}
+#teams .branch{color:var(--magenta);margin-right:.45rem;font-family:ui-monospace,Consolas,monospace}
+#teams small.kind{display:block;margin-left:1.45rem;color:var(--cyan);font-size:.78rem;letter-spacing:.04em;text-transform:uppercase}
 .actonly{display:none}
 body.can-act .actonly{display:block}
 body.can-act button.actonly{display:inline-block}
@@ -678,6 +681,9 @@ function msKeys(v) {
   return [...new Set(keys)];
 }
 function teamOf(r) { return (r.team || "").split(/[(,;]/)[0].trim(); }
+// a contractor's kind of work (report.py assign --kind, the agent type) as the Teams tree shows it
+const KIND_LABEL = {developer: "developer", senior: "senior developer", tester: "testing", docs: "docs / translations",
+                    general: "general"};
 // how long something has been running: "12 min", "1 h 05 min"
 function since(iso) {
   const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -736,13 +742,24 @@ function renderTeams() {
       "Out of date: written " + ago(st.written_at) + " - the Teams feed is not running, this is not what the team does now.")));
     if (st.mode && st.mode !== "full") tb.append(el("tr", {}, el("td", {colspan: 3, class: "dim"},
       "Mode: " + st.mode + (st.mode === "crunch" || st.mode === "lite" ? " - PM hub + contractors" : ""))));
-    for (const m of st.teams) tb.append(el("tr", {},
-      el("td", {}, m.name, el("small", {}, m.team)),
+    // a tree: every session, then the contractors it hired under it (crunch lines carry `under`; in full mode a
+    // lead's slot with a named worker becomes that worker's own line), each labelled by its kind of work
+    const job = i => el("div", {class: "job"}, el("code", {class: "tid"}, i.id), " ", i.what,
+      i.since ? el("small", {}, "working " + since(i.since)) : null);
+    const kindLabel = k => KIND_LABEL[k] || k || "contractor";
+    const row = (m, child, last) => el("tr", {class: child ? "child" : "top"},
+      el("td", {}, child ? el("span", {class: "branch"}, last ? "└" : "├") : null,
+        el("span", {class: "who"}, m.name), el("small", {class: child ? "kind" : ""}, child ? kindLabel(m.kind) : m.team)),
       el("td", {class: "state-" + m.state}, m.state),
-      el("td", {}, m.items.map(i => el("div", {class: "job"}, el("code", {class: "tid"}, i.id), " ", i.what,
-        i.worker || i.since ? el("small", {}, [i.worker && i.worker !== m.name ? i.worker : "",
-                                               i.since ? "working " + since(i.since) : ""].filter(Boolean).join(" · ")) : null)),
-        m.note ? el("small", {}, m.note) : null)));
+      el("td", {}, m.items.map(job), m.note ? el("small", {}, m.note) : null));
+    for (const m of st.teams.filter(t => !t.under)) {
+      const kids = st.teams.filter(t => t.under === m.name);
+      const own = m.items.filter(i => !i.worker || i.worker === m.name);
+      for (const i of m.items.filter(i => i.worker && i.worker !== m.name))
+        kids.push({name: i.worker, kind: i.kind, state: "working", items: [i], note: ""});
+      tb.append(row(Object.assign({}, m, {items: own}), false));
+      kids.forEach((k, n) => tb.append(row(k, true, n === kids.length - 1)));
+    }
     if (st.leads_note) tb.append(el("tr", {}, el("td", {colspan: 3, class: "dim"}, st.leads_note)));
     const u = st.budget || {};
     document.getElementById("usage").textContent = u.week_pct != null

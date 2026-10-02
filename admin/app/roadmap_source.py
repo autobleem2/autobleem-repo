@@ -103,14 +103,17 @@ def _item(d, keys):
 def _session(s, flight):
     """One teams.json session as a row: its in-flight slots (else its current task) and what waits in its queue."""
     # every item: the task id, its description, the contractor doing it (when named) and since when (UTC ISO, may be "")
-    items = [_item(i, ("id", "desc", "worker", "since")) for i in (flight or {}).get("in_flight") or []
+    items = [_item(i, ("id", "desc", "worker", "kind", "since")) for i in (flight or {}).get("in_flight") or []
              if isinstance(i, dict)]
-    items = [{"id": i["id"], "what": i["desc"], "worker": i["worker"], "since": i["since"]} for i in items]
+    items = [{"id": i["id"], "what": i["desc"], "worker": i["worker"], "kind": i["kind"], "since": i["since"]}
+             for i in items]
     if not items and s.get("task_id"):
         items = [{"id": str(s["task_id"]), "what": str(s.get("task", "")), "worker": "",
-                  "since": str(s.get("since", ""))}]
+                  "kind": str(s.get("kind", "")), "since": str(s.get("since", ""))}]
     queued = [str(q) for q in (flight or {}).get("queued") or []]
-    return {"name": str(s.get("name", "")), "team": " · ".join(x for x in (str(s.get("role", "")), str(s.get("model", ""))) if x),
+    # `under` = whose contractor this line is (crunch/lite lines); the page draws them as a tree under that name
+    return {"name": str(s.get("name", "")), "under": str(s.get("under", "")), "kind": str(s.get("kind", "")),
+            "team": " · ".join(x for x in (str(s.get("role", "")), str(s.get("model", ""))) if x),
             "state": str(s.get("state", "")) or "unknown", "items": items,
             "note": ("queued: " + ", ".join(queued)) if queued else ("" if items else str(s.get("task", "")))}
 
