@@ -263,7 +263,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
     <div id="userMenu" class="menu" hidden>
       <div class="who"><b id="me"></b><small id="meRole"></small></div>
       <a href="#store" data-menu>Store</a>
-      <button id="notif" type="button" class="item" title="Desktop notifications when a build finishes">Notify me</button>
+      <button id="notif" type="button" class="item" title="Desktop notifications when a build finishes">Notifications: off</button>
       <a href="/repository/">Download page</a>
       <a href="/oauth2/sign_out?rd=/" class="out">Sign out</a>
     </div></div></nav>
@@ -665,7 +665,7 @@ function renderStatus(s) {
       const key = r.repo + "/" + r.id;
       if (seenActive.has(key) && !running.has(key)) {
         seenActive.delete(key);
-        if (window.Notification && Notification.permission === "granted")
+        if (notifyOn() && window.Notification && Notification.permission === "granted")
           new Notification(r.repo + ": " + (r.conclusion || r.status),
                            {body: r.workflow + " · " + (r.branch || ""), icon: "/assets/icon.png"});
       }
@@ -1046,6 +1046,12 @@ async function loadBranches() {
   document.getElementById("branchHint").textContent = "newest push: " + list[0].branch + " (" + ago(list[0].at) + ", " +
     list[0].repos.join(", ") + ") - the box lists the last " + list.length;
 }
+// desktop notifications when a build finishes: on only after "Notifications: on" was picked here (per browser)
+function notifyOn() {
+  try { return localStorage.getItem("ab-admin-notify") === "on" && window.Notification && Notification.permission === "granted"; }
+  catch (e) { return false; }
+}
+function setNotify(on) { try { localStorage.setItem("ab-admin-notify", on ? "on" : "off"); } catch (e) { /* private */ } }
 // a tab's label with the number of rows its table shows now (it follows the filters)
 function tabCount(tab, label, n) {
   const a = document.querySelector('nav.tabs a[data-tab="' + tab + '"]');
@@ -1260,9 +1266,18 @@ async function start() {
   menu.onclick = e => { if (e.target.closest("a, button")) openMenu(false); };
   document.addEventListener("click", e => { if (!e.target.closest(".usermenu")) openMenu(false); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") openMenu(false); });
-  document.getElementById("notif").onclick = () => window.Notification && Notification.requestPermission()
-    .then(p => toast(p === "granted" ? "Desktop notifications are on while this page is open."
-                                     : "Notifications were not allowed."));
+  // our own on/off (the browser cannot take a granted permission back from a page): off = the panel sends none
+  const notif = document.getElementById("notif");
+  const showNotif = () => { notif.textContent = "Notifications: " + (notifyOn() ? "on" : "off"); };
+  showNotif();
+  notif.onclick = () => {
+    if (notifyOn()) { setNotify(false); showNotif(); toast("Desktop notifications are off."); return; }
+    if (!window.Notification) { toast("This browser has no desktop notifications."); return; }
+    Notification.requestPermission().then(p => {
+      setNotify(p === "granted"); showNotif();
+      toast(p === "granted" ? "Desktop notifications are on while this page is open." : "Notifications were not allowed.");
+    });
+  };
   document.getElementById("nightlyGo").onclick = () => {
     const platforms = [...document.querySelectorAll("#platforms input:checked")].map(i => i.value);
     act("Refresh the nightly for " + (platforms.join(", ") || "every platform"), "nightly", {platforms,
