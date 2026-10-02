@@ -154,6 +154,28 @@ input[type=checkbox]{accent-color:var(--cyan)}
 .state-working{color:var(--rel)}.state-waiting{color:var(--pre)}.state-asleep,.state-unknown{color:var(--dim)}
 td.tid,code.tid{white-space:nowrap}
 tr.task{cursor:pointer}tr.task.done td{opacity:.55}tr.task.done .ttl{text-decoration:line-through}
+/* the Tasks tab: fixed narrow columns, the title two lines at most (all of it when the row is open), short chips */
+table.tasks{table-layout:fixed}
+table.tasks col.c-id{width:7.6rem}table.tasks col.c-st{width:6.4rem}table.tasks col.c-ms{width:5.6rem}
+table.tasks col.c-who{width:9rem}table.tasks col.c-size{width:3.6rem}
+table.bugs{table-layout:fixed}
+table.bugs col.c-id{width:5.4rem}table.bugs col.c-pl{width:6.6rem}table.bugs col.c-sev{width:5.2rem}
+table.bugs col.c-st{width:6.8rem}table.bugs col.c-found{width:6.4rem}table.bugs col.c-fix{width:7rem}
+table.bugs td{vertical-align:top}table.bugs td.when{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+table.bugs .ttl{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+table.bugs .ttl.full{display:block;-webkit-line-clamp:unset}
+@media (max-width:44rem){table.bugs col.c-pl,table.bugs col.c-found,table.bugs col.c-sev{width:0}
+  table.bugs td:nth-child(3),table.bugs td:nth-child(4),table.bugs td:nth-child(6),
+  table.bugs th:nth-child(3),table.bugs th:nth-child(4),table.bugs th:nth-child(6){display:none}}
+table.tasks td{vertical-align:top}
+table.tasks .ttl{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+table.tasks .ttl.full{display:block;-webkit-line-clamp:unset}
+.chip{display:inline-block;font-size:.72rem;font-weight:600;line-height:1.5;padding:0 .4rem;margin:0 .2rem .15rem 0;
+  white-space:nowrap;color:var(--steel);box-shadow:inset 0 0 0 1px var(--line);max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.chip.r-owner{color:var(--magenta);box-shadow:inset 0 0 0 1px rgba(255,70,170,.5)}
+.chip.r-test{color:var(--pre)}.chip.r-design{color:var(--dev)}.chip.r-senior{color:var(--warn)}
+@media (max-width:44rem){table.tasks col.c-who,table.tasks col.c-size{width:0}
+  table.tasks td:nth-child(5),table.tasks td:nth-child(6),table.tasks th:nth-child(5),table.tasks th:nth-child(6){display:none}}
 tr.more td{font-size:.86rem;color:var(--dim);white-space:normal}
 /* sortable headers (click = sort, again = reverse) and the todo State pill */
 th[data-sort]{cursor:pointer;user-select:none;white-space:nowrap}
@@ -207,6 +229,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
 </div>
 <nav class="tabs" id="tabs">
   <a href="#roadmap" data-tab="roadmap">Roadmap</a>
+  <a href="#tasks" data-tab="tasks">Tasks</a>
   <a href="#bugs" data-tab="bugs">Bugs</a>
   <a href="#builds" data-tab="builds">Builds</a>
   <a href="#releases" data-tab="releases">Releases</a>
@@ -241,20 +264,24 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
       <h2>Milestones <small>click one to filter the tasks</small></h2>
       <div id="milestones"><p class="dim">Loading...</p></div>
     </section>
+  </section>
+
+  <section id="tab-tasks" class="tab-content">
     <section class="panel" id="tasksPanel">
       <h2>Tasks <small id="taskCount"></small></h2>
       <div class="row">
         <input type="text" id="taskQ" placeholder="search" size="18">
         <select id="taskMs"><option value="">every milestone</option></select>
-        <select id="taskTeam"><option value="">every team</option></select>
+        <select id="taskWho"><option value="">anyone</option></select>
         <select id="taskSec"><option value="">every section</option></select>
         <select id="taskState"><option value="open">open</option><option value="new">new</option>
           <option value="in progress">in progress</option><option value="done">done</option>
           <option value="closed">closed</option><option value="">all</option></select>
       </div>
-      <div class="scroll"><table>
+      <div class="scroll"><table class="tasks">
+        <colgroup><col class="c-id"><col><col class="c-st"><col class="c-ms"><col class="c-who"><col class="c-size"></colgroup>
         <thead id="tasksHead"><tr><th data-sort="id">ID</th><th data-sort="title">Task</th><th data-sort="state">State</th>
-          <th data-sort="ms">Milestone</th><th data-sort="team">Team</th><th data-sort="size">Size</th></tr></thead>
+          <th data-sort="ms">Milestone</th><th data-sort="who">Who</th><th data-sort="size">Size</th></tr></thead>
         <tbody id="tasks"></tbody>
       </table></div>
     </section>
@@ -278,14 +305,16 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
           <option value="pcusb">pcusb</option><option value="win">win</option>
         </select>
       </div>
-      <div class="scroll"><table>
+      <div class="scroll"><table class="bugs">
+        <colgroup><col class="c-id"><col><col class="c-pl"><col class="c-sev"><col class="c-st"><col class="c-found"><col class="c-fix"></colgroup>
         <thead id="bugsHead"><tr><th data-sort="id">BUG</th><th data-sort="title">Title</th><th data-sort="platform">Platform</th>
           <th data-sort="severity">Severity</th><th data-sort="state">State</th><th data-sort="found">Found</th><th>Fix</th></tr></thead>
         <tbody id="bugsOpen"></tbody>
       </table></div>
       <details id="bugsClosedDetails">
         <summary>Closed / wontfix / duplicate <span id="bugsClosedCount" class="dim"></span></summary>
-        <div class="scroll"><table>
+        <div class="scroll"><table class="bugs">
+          <colgroup><col class="c-id"><col><col class="c-pl"><col class="c-sev"><col class="c-st"><col class="c-found"><col class="c-fix"></colgroup>
           <thead><tr><th>BUG</th><th>Title</th><th>Platform</th><th>Severity</th><th>State</th><th>Found</th><th>Fix</th></tr></thead>
           <tbody id="bugsClosed"></tbody>
         </table></div>
@@ -428,7 +457,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
 const API = "/admin/api/";let canAct = false, firstStatus = true;
 const seenActive = new Set();
 const selectedJob = {}; // run id -> job name selected in that card
-const TABS = ["roadmap", "bugs", "builds", "releases", "store", "server", "audit"];
+const TABS = ["roadmap", "tasks", "bugs", "builds", "releases", "store", "server", "audit"];
 
 function el(tag, attrs, ...kids) {
   const e = document.createElement(tag);
@@ -698,12 +727,21 @@ function msKey(v) {
   const m = MS.find(([k, n]) => v === k || v.startsWith(n) || (k === "later" && v.startsWith("2.1")));
   return m ? m[0] : v;
 }
+// a milestone cell is "alpha1 (2026-10-01: a long note ...)" - the chip shows the part before the note
+function msShort(v) { return (v || "").split(" (")[0].replace(/\*/g, "").trim(); }
 function msKeys(v) {
-  const parts = (v || "").split(/[/,;\s]+/).map(p => p.trim()).filter(Boolean);
-  const keys = parts.map(msKey).filter(k => k && k !== "any");
+  const parts = msShort(v).split(/[/,;\s]+/).map(p => p.trim()).filter(Boolean);
+  const keys = parts.map(msKey).filter(k => k && k !== "any" && k !== "-");
   return [...new Set(keys)];
 }
 function teamOf(r) { return (r.team || "").split(/[(,;]/)[0].trim(); }
+// the Who cell ("dev+owner", "owner then dev", "tester, dev", "designer+dev+tester") as short role chips
+const ROLE_SHORT = {dev: "dev", developer: "dev", owner: "owner", tester: "test", designer: "design", senior: "senior",
+                    pm: "PM", docs: "docs"};
+function rolesOf(r) {
+  const parts = (r.who || "").toLowerCase().split(/[+,/]|\bthen\b|\s+/).map(p => p.trim()).filter(Boolean);
+  return [...new Set(parts.map(p => ROLE_SHORT[p]).filter(Boolean))];
+}
 // The budget beside the team: the laptop panel's tile (panel/laptop/abpanel_gui.py Budget) - 5h, week, pace, when
 // the week hits 100%, and the week's chart: the plan line (14 a day), the readings, the line at this pace, now.
 const DAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -861,9 +899,9 @@ function renderTeams() {
   if (mine.length) needs.append(el("li", {class: "dim later"}, mine.length + " todo rows name you (for later, not now) - ",
     el("button", {type: "button", class: "link", onclick: () => {
       // every other filter off, or a team/section picked earlier hides the owner's rows (they have no team)
-      for (const id of ["taskQ", "taskMs", "taskTeam", "taskSec"]) document.getElementById(id).value = "";
+      for (const id of ["taskQ", "taskMs", "taskWho", "taskSec"]) document.getElementById(id).value = "";
       document.getElementById("taskState").value = "open"; renderRoadmap.ownerOnly = true; renderRoadmap();
-      document.getElementById("tasksPanel").scrollIntoView({behavior: "smooth"}); }}, "show them")));
+      location.hash = "tasks"; }}, "show them")));
 }
 function fillSelect(id, values, label) {
   const s = document.getElementById(id), keep = s.value;
@@ -882,15 +920,18 @@ function renderMilestones(d) {
     const done = rows.filter(r => r.done).length, open = rows.length - done;
     if (firstOpen === null && open) firstOpen = key;
     const teams = {};
-    rows.filter(r => !r.done).forEach(r => { const t = teamOf(r) || "no team"; teams[t] = (teams[t] || 0) + 1; });
+    rows.filter(r => !r.done).forEach(r => { for (const t of rolesOf(r).length ? rolesOf(r) : ["nobody"]) teams[t] = (teams[t] || 0) + 1; });
     const m = byKey[key] || {}, sel = chosen === key, expanded = sel || key === firstOpen;
-    box.append(el("div", {class: "card ms" + (sel ? " sel" : ""), onclick: () => {
-        document.getElementById("taskMs").value = sel ? "" : key; renderRoadmap(); }},
+    // a click opens the Tasks tab filtered to this milestone's open rows
+    box.append(el("div", {class: "card ms" + (sel ? " sel" : ""), title: "Show this milestone's tasks", onclick: () => {
+        for (const id of ["taskQ", "taskWho", "taskSec"]) document.getElementById(id).value = "";
+        document.getElementById("taskMs").value = key; document.getElementById("taskState").value = "open";
+        renderRoadmap.ownerOnly = false; renderRoadmap(); location.hash = "tasks"; }},
       el("div", {class: "head"}, el("h3", {}, m.name || name, m.theme ? el("span", {class: "dim"}, " · " + m.theme) : null),
         el("span", {class: "dim"}, open + " open · " + done + " done")),
       el("div", {class: "progress"}, el("i", {style: "width:" + (rows.length ? Math.round(100 * done / rows.length) : 0) + "%"})),
       expanded && m.gate ? el("div", {class: "gate"}, "Gate: " + m.gate) : null,
-      expanded && open ? el("div", {class: "teams"}, "Open by team: " +
+      expanded && open ? el("div", {class: "teams"}, "Open by who: " +
         Object.entries(teams).map(([t, n]) => t + " " + n).join(" · ")) : null));
   }
   if (!box.children.length) box.append(el("p", {class: "dim"}, "No milestones found."));
@@ -928,16 +969,16 @@ const TASK_STATE_ORDER = {"new": 0, "in progress": 1, "done": 2, "closed": 3};
 function taskKey(r, key) {
   if (key === "id") return (r.id || "").replace(/-?\d+$/, "") + "-" + String(idNum(r.id)).padStart(5, "0");
   if (key === "state") return TASK_STATE_ORDER[r.state] ?? 9;
-  if (key === "team") return teamOf(r) || "￿";
-  if (key === "ms") return r.ms || "￿";
+  if (key === "who") return rolesOf(r).join(" ") || "￿";
+  if (key === "ms") { const k = msKeys(r.ms)[0], i = MS.findIndex(m => m[0] === k); return i < 0 ? 99 : i; }
   if (key === "size") return r.size || "￿";
   return r[key];
 }
 function renderTasks(d) {
   const q = document.getElementById("taskQ").value.trim().toLowerCase(), ms = document.getElementById("taskMs").value;
-  const team = document.getElementById("taskTeam").value, sec = document.getElementById("taskSec").value;
+  const who = document.getElementById("taskWho").value, sec = document.getElementById("taskSec").value;
   const state = document.getElementById("taskState").value;
-  const rows = sortRows("tasks", d.rows.filter(r => (!ms || msKeys(r.ms).includes(ms)) && (!team || teamOf(r) === team) &&
+  const rows = sortRows("tasks", d.rows.filter(r => (!ms || msKeys(r.ms).includes(ms)) && (!who || rolesOf(r).includes(who)) &&
     (!sec || r.section === sec) && (!state || (state === "open" ? !r.done : r.state === state)) &&
     (!renderRoadmap.ownerOnly || (r.who || "").toLowerCase().includes("owner")) &&
     (!q || (r.id + " " + r.title + " " + (r.text || "")).toLowerCase().includes(q))), taskKey);
@@ -952,14 +993,18 @@ function renderTasks(d) {
     tb.append(el("tr", {class: "task" + (r.done ? " done" : ""),
         onclick: () => { openRow = openRow === r.id ? null : r.id; renderTasks(d); }},
       el("td", {class: "tid"}, el("code", {}, r.id)),
-      el("td", {}, el("span", {class: "ttl"}, r.title),
+      el("td", {}, el("span", {class: "ttl" + (openRow === r.id ? " full" : ""), title: openRow === r.id ? "" : r.title}, r.title),
         r.done ? el("small", {}, "done " + (r.done_date || "") + (r.done_by ? " · " + r.done_by : "")) : null),
       el("td", {class: "st bstate-" + (r.state || "new").replace(/ /g, "-")}, r.state || "new"),
-      el("td", {}, r.ms ? el("span", {class: "badge"}, r.ms) : null),
-      el("td", {}, teamOf(r) ? el("span", {class: "badge"}, teamOf(r)) : null),
-      el("td", {class: "num"}, r.size || "")));
+      el("td", {}, msShort(r.ms) && msShort(r.ms) !== "-"
+        ? el("span", {class: "chip", title: r.ms}, msShort(r.ms).replace(/^after (\S+)$/, "> $1")) : null),
+      el("td", {}, rolesOf(r).map(x => el("span", {class: "chip role r-" + x, title: r.who}, x))),
+      el("td", {class: "num"}, (r.size || "").replace("S-M", "S/M"))));
     if (openRow === r.id) tb.append(el("tr", {class: "more"},
-      el("td", {colspan: 6}, r.text || "", r.where ? el("div", {}, "Where: " + r.where) : null)));
+      el("td", {colspan: 6}, r.text || "",
+        r.ms && r.ms !== msShort(r.ms) ? el("div", {}, "Milestone: " + r.ms) : null,
+        r.who ? el("div", {}, "Who: " + r.who) : null,
+        r.where ? el("div", {}, "Where: " + r.where) : null)));
   }
 }
 function renderRoadmap() {
@@ -971,7 +1016,7 @@ async function loadRoadmap() {
   try {
     roadmapData = await api("roadmap");
     fillSelect("taskMs", MS.map(m => m[0]), k => MS.find(m => m[0] === k)[1]);
-    fillSelect("taskTeam", [...new Set(roadmapData.rows.map(teamOf).filter(Boolean))].sort());
+    fillSelect("taskWho", [...new Set(roadmapData.rows.flatMap(rolesOf))].sort());
     fillSelect("taskSec", [...new Set(roadmapData.rows.map(r => r.section).filter(Boolean))].sort());
     renderRoadmap();
   } catch (e) { document.getElementById("milestones").replaceChildren(el("p", {class: "bad"}, e.message)); }
@@ -979,7 +1024,7 @@ async function loadRoadmap() {
   try { ownerDone = new Map((await api("needs/done")).map(d => [d.id, d])); } catch (e) { /* keep the last list */ }
   renderTeams();
 }
-for (const id of ["taskQ", "taskMs", "taskTeam", "taskSec", "taskState"])
+for (const id of ["taskQ", "taskMs", "taskWho", "taskSec", "taskState"])
   document.getElementById(id).addEventListener(id === "taskQ" ? "input" : "change",
     () => { renderRoadmap.ownerOnly = false; renderRoadmap(); });
 hookSort("tasks", renderRoadmap);
@@ -989,23 +1034,48 @@ const SEV_ORDER = {blocker: 0, major: 1, minor: 2};
 let bugsData = null;
 function bugIsOpen(b) { return !["closed", "wontfix", "duplicate"].includes(b.state); }
 function bugMatchesPlatform(b, p) { return !p || b.platforms.includes(p) || (b.platforms.length === 1 && b.platforms[0] === "all"); }
+// "console session 318, block B3, 2026-09-27; fixed in ..." -> "27.09 PSC": the day + where or by whom it was seen
+// (the first tag that matches); all of it on hover and in the opened row
+const FOUND_TAG = [[/console|\bpsc\b/i, "PSC"], [/\bpi\b|pi 400|raspberry/i, "Pi"], [/pc[- ]?usb|pc stick|\bvm\b/i, "PC"],
+                   [/windows|\bwin\b/i, "Win"], [/owner/i, "owner"], [/tester|walk/i, "tester"], [/review/i, "review"]];
+function foundShort(f) {
+  f = f || "";
+  const tag = (FOUND_TAG.find(([re]) => re.test(f)) || [null, ""])[1];
+  const d = /(\d{4})-(\d{2})-(\d{2})/.exec(f) || /\b(\d{2})\.(\d{2})\b/.exec(f);
+  const day = d ? (d.length === 4 ? d[3] + "." + d[2] : d[1] + "." + d[2]) : "";
+  return [day, tag].filter(Boolean).join(" ") || f.slice(0, 10);
+}
+const PLAT_SHORT = {psc: "PSC", rpi: "Pi", pcusb: "PC", win: "Win", all: "all"};
+function platChips(b) {
+  const p = b.platforms.length >= 4 || b.platforms.includes("all") ? ["all"] : b.platforms;
+  return p.map(x => el("span", {class: "chip", title: b.platforms.join(", ")}, PLAT_SHORT[x] || x));
+}
+let openBug = null;
 function bugRow(b) {
-  return el("tr", {},
+  const open = openBug === b.id;
+  const tr = el("tr", {class: "task", onclick: e => { if (e.target.closest("a")) return;
+      openBug = open ? null : b.id; renderBugs(); }},
     el("td", {class: "tid"}, el("code", {}, b.id)),
-    el("td", {}, b.title),
-    el("td", {}, b.platforms.join(", ")),
-    el("td", {class: "sev-" + b.severity}, b.severity),
-    el("td", {class: "bstate-" + b.state.replace(/ /g, "-")},b.state === "duplicate" ? "duplicate of " + b.duplicate_of : b.state),
-    el("td", {class: "when"}, b.found),
-    el("td", {}, b.fix_id ? el("a", {href: "#roadmap", onclick: () => {
-        for (const id of ["taskQ", "taskMs", "taskTeam", "taskSec", "taskState"]) document.getElementById(id).value = "";
+    el("td", {}, el("span", {class: "ttl" + (open ? " full" : ""), title: open ? "" : b.title}, b.title)),
+    el("td", {}, platChips(b)),
+    el("td", {class: "st sev-" + b.severity}, b.severity),
+    el("td", {class: "st bstate-" + b.state.replace(/ /g, "-")}, b.state === "duplicate" ? "dup of " + b.duplicate_of : b.state),
+    el("td", {class: "when", title: b.found}, foundShort(b.found)),
+    el("td", {}, b.fix_id ? el("a", {href: "#tasks", onclick: () => {
+        for (const id of ["taskQ", "taskMs", "taskWho", "taskSec", "taskState"]) document.getElementById(id).value = "";
         renderRoadmap.ownerOnly = false;
         openRow = b.fix_id;
-        location.hash = "roadmap"; showTab("roadmap");
+        location.hash = "tasks"; showTab("tasks");
         if (roadmapData) renderRoadmap();
       }}, b.fix_id) : null,
-      b.fix_note ? el("small", {}, (b.fix_id ? " " : "") + b.fix_note) : null,
+      b.fix_note && !b.fix_id ? el("span", {class: "dim", title: b.fix_note}, "note") : null,
       b.fix_id || b.fix_note ? null : el("span", {class: "dim"}, "-")));
+  if (!open) return tr;
+  const more = el("tr", {class: "more"}, el("td", {colspan: 7},
+    el("div", {}, "Found: " + (b.found || "-")),
+    el("div", {}, "Platforms: " + b.platforms.join(", ")),
+    b.fix_note ? el("div", {}, "Fix: " + (b.fix_id ? b.fix_id + " - " : "") + b.fix_note) : null));
+  const frag = document.createDocumentFragment(); frag.append(tr, more); return frag;
 }
 function renderBugs() {
   if (!bugsData) return;
@@ -1043,6 +1113,7 @@ function bugKey(b, key) {
   if (key === "severity") return SEV_ORDER[b.severity] ?? 99;
   if (key === "state") return BUG_STATE_ORDER[b.state] ?? 9;
   if (key === "platform") return b.platforms.join(", ");
+  if (key === "found") { const d = /\d{4}-\d{2}-\d{2}/.exec(b.found || ""); return d ? d[0] : "0000"; }
   return b[key];
 }
 hookSort("bugs", renderBugs);
@@ -1063,7 +1134,7 @@ function showTab(name) {
   }
   try { localStorage.setItem("ab-admin-tab", name); } catch (e) { /* private browsing etc */ }
   if (name === "store" && !renderStore.loaded) loadStore();
-  if (name === "roadmap" && !loadRoadmap.loaded) loadRoadmap();
+  if ((name === "roadmap" || name === "tasks") && !loadRoadmap.loaded) loadRoadmap();
   if (name === "bugs" && !loadBugs.loaded) loadBugs();
 }
 function initTabs() {
