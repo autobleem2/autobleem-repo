@@ -246,8 +246,8 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
   <a href="#roadmap" data-tab="roadmap">Roadmap</a>
   <a href="#tasks" data-tab="tasks">Tasks</a>
   <a href="#bugs" data-tab="bugs">Bugs</a>
-  <a href="#builds" data-tab="builds">Builds</a>
   <a href="#releases" data-tab="releases">Releases</a>
+  <a href="#builds" data-tab="builds">Builds</a>
   <a href="#store" data-tab="store">Store</a>
   <a href="#server" data-tab="server">Server</a>
   <a href="#audit" data-tab="audit">Audit</a>
@@ -480,7 +480,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
 const API = "/admin/api/";let canAct = false, firstStatus = true;
 const seenActive = new Set();
 const selectedJob = {}; // run id -> job name selected in that card
-const TABS = ["roadmap", "tasks", "bugs", "builds", "releases", "store", "server", "audit"];
+const TABS = ["roadmap", "tasks", "bugs", "releases", "builds", "store", "server", "audit"];
 
 function el(tag, attrs, ...kids) {
   const e = document.createElement(tag);
