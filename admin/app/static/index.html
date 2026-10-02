@@ -143,6 +143,17 @@ input[type=checkbox]{accent-color:var(--cyan)}
 .bstate-wontfix,.bstate-duplicate{color:var(--dim)}
 /* R27 - the roadmap tab */
 .needs{margin:0;padding-left:1.1rem}.needs li{margin:.25rem 0}.needs li::marker{color:var(--magenta)}
+/* a blocker: work stands until the owner acts - red, blinking (still red without motion when the system asks so) */
+@keyframes blink{50%{opacity:.25}}
+.needs li.blocker{color:var(--bad);font-weight:600;animation:blink 1s steps(2,start) infinite}
+.needs li.blocker::marker{color:var(--bad)}.needs li.blocker .kind{color:var(--bad)}
+.needs li.blocker small{color:#ffb3b3}
+.needs li.blocker.head{list-style:none;margin-left:-1.1rem;letter-spacing:.06em;padding:.25rem .5rem;
+  background:rgba(255,107,107,.14);box-shadow:inset 3px 0 0 var(--bad)}
+nav.tabs a.alarm{color:var(--bad)}
+nav.tabs a.alarm:after{content:"";display:inline-block;width:.5rem;height:.5rem;margin-left:.4rem;border-radius:50%;
+  background:var(--bad);vertical-align:middle;animation:blink 1s steps(2,start) infinite}
+@media (prefers-reduced-motion:reduce){.needs li.blocker,nav.tabs a.alarm:after{animation:none}}
 .needs li.calm{color:var(--rel);list-style:none;margin-left:-1.1rem}
 .needs li.later{list-style:none;margin:.7rem 0 0 -1.1rem;font-size:.88rem}
 .needs li small{display:block;color:var(--dim);font-size:.82rem}
@@ -882,11 +893,23 @@ function renderTeams() {
     }
     if (st.leads_note) tb.append(el("tr", {}, el("td", {colspan: 3, class: "dim"}, st.leads_note)));
     renderBudget(st.budget || {});
-    for (const q of st.questions || [])
+    // blockers first: something stands until the owner acts - red and blinking (the Roadmap tab blinks too)
+    const qs = st.questions || [], blockers = qs.filter(q => q.blocking).length + st.needs_owner.filter(n => n.blocks).length;
+    document.querySelector('nav.tabs a[data-tab="roadmap"]').classList.toggle("alarm", blockers > 0);
+    if (blockers) needs.append(el("li", {class: "blocker head"},
+      blockers === 1 ? "BLOCKER - work stands until you act" : blockers + " BLOCKERS - work stands until you act"));
+    for (const n of st.needs_owner.filter(n => n.blocks))
+      needs.append(el("li", {class: "blocker"}, el("span", {class: "kind"}, "blocker"), el("code", {class: "tid"}, n.id), " ", n.what,
+        el("small", {}, "stands: " + n.blocks + (n.since ? " · waiting " + since(n.since) : ""))));
+    for (const q of qs.filter(q => q.blocking))
+      needs.append(el("li", {class: "blocker"}, el("span", {class: "kind"}, "blocker"), q.question,
+        el("small", {}, "from " + q.from + " · added " + q.added + (q.options ? " · " + q.options : ""))));
+    for (const q of qs.filter(q => !q.blocking))
       needs.append(el("li", {}, el("span", {class: "kind"}, "question"), q.question,
         el("small", {}, "from " + q.from + " · added " + q.added + (q.options ? " · " + q.options : ""))));
-    for (const n of st.needs_owner)
+    for (const n of st.needs_owner.filter(n => !n.blocks))
       needs.append(el("li", {}, el("span", {class: "kind"}, n.kind), el("code", {class: "tid"}, n.id), " ", n.what,
+        n.since ? el("small", {}, "waiting " + since(n.since)) : null,
         n.howto ? el("button", {type: "button", class: "howto", title: "How to do it", "aria-label": "How to do it",
                                 onclick: () => openHowto(n)}, "i") : null,
         ownerDone.has(n.id) ? el("small", {class: "told"}, " ✓ Eleanor told " + ago(ownerDone.get(n.id).at)) : null));

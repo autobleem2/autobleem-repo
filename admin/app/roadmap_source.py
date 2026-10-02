@@ -75,11 +75,10 @@ class RoadmapSource:
             "teams": [_session(s, flights.get(s.get("name"))) for s in data.get("sessions") or []
                       if isinstance(s, dict)],
             # sessions waiting for the owner: plain ids (the old feed) or {id, what}
-            "needs_owner": [{"id": str(i.get("id", "")) if isinstance(i, dict) else str(i), "kind": "session",
-                             "what": str(i.get("what", "")) if isinstance(i, dict) else "", "howto": ""}
-                            for i in data.get("waiting_on_owner") or []],
+            # `blocks` = what stands until he acts: a blocker (red and blinking on the page)
+            "needs_owner": [_wait(i) for i in data.get("waiting_on_owner") or []],
             # the PM's open questions for the owner (owner-questions.md rows nobody has answered yet)
-            "questions": [_item(q, ("added", "from", "question", "options"))
+            "questions": [dict(_item(q, ("added", "from", "question", "options")), blocking=bool(q.get("blocking")))
                           for q in data.get("owner_questions") or [] if isinstance(q, dict)],
         }}
 
@@ -94,6 +93,14 @@ class RoadmapSource:
         from .roadmap import parse_milestones, parse_todo
         todo, plan = self.text("docs/todo.md"), self.text("docs/roadmap.md")
         return {"rows": parse_todo(todo or ""), "milestones": parse_milestones(plan or "")}
+
+
+def _wait(i):
+    """A session waiting for the owner: a plain id (the old feed) or {id, what, blocks, since}."""
+    if not isinstance(i, dict):
+        return {"id": str(i), "kind": "session", "what": "", "howto": "", "blocks": "", "since": ""}
+    return {"id": str(i.get("id", "")), "kind": "session", "what": str(i.get("what", "")), "howto": "",
+            "blocks": str(i.get("blocks", "")), "since": str(i.get("since", ""))}
 
 
 def _item(d, keys):
