@@ -185,6 +185,7 @@ nav.tabs a.alarm:after{content:"";display:inline-block;width:.5rem;height:.5rem;
 .badge{display:inline-block;font-size:.72rem;font-weight:600;padding:0 .5rem;color:var(--dim);white-space:nowrap;--cut:5px}
 .state-working{color:var(--rel)}.state-waiting{color:var(--pre)}.state-asleep,.state-unknown{color:var(--dim)}
 td.tid,code.tid{white-space:nowrap}
+tr.gap td{height:1.4rem;padding:0;border:0;background:none}
 tr.task{cursor:pointer}tr.task.done td{opacity:.55}tr.task.done .ttl{text-decoration:line-through}
 /* the Tasks tab: fixed narrow columns, the title two lines at most (all of it when the row is open), short chips */
 table.tasks{table-layout:fixed}
@@ -1125,7 +1126,10 @@ function renderTasks(d) {
   const base = d.rows.filter(r => (!ms || msKeys(r.ms).includes(ms)) && (!who || rolesOf(r).includes(who)) &&
     (!sec || r.section === sec) && (!renderRoadmap.ownerOnly || (r.who || "").toLowerCase().includes("owner")) &&
     (!q || (r.id + " " + r.title + " " + (r.text || "")).toLowerCase().includes(q)));
-  const rows = sortRows("tasks", base.filter(r => !state || (state === "open" ? !r.done : r.state === state)), taskKey);
+  let rows = sortRows("tasks", base.filter(r => !state || (state === "open" ? !r.done : r.state === state)), taskKey);
+  // no filter and no column sort: the nearest milestone first (the order of MS, none last), a gap between them
+  const grouped = !sorts.tasks && !q && !ms && !who && !sec && !renderRoadmap.ownerOnly && (state === "open" || state === "");
+  if (grouped) rows = rows.map((r, i) => [taskKey(r, "ms"), i, r]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(x => x[2]);
   const folded = state === "open" ? sortRows("tasks", base.filter(r => r.done), taskKey) : [];
   markSort("tasks");
   tabCount("tasks", "Tasks", rows.length);
@@ -1136,7 +1140,13 @@ function renderTasks(d) {
   const fill = (tb, list, empty) => {
     tb.replaceChildren();
     if (!list.length && empty) tb.append(el("tr", {}, el("td", {colspan: 6, class: "dim"}, empty)));
-    for (const r of list) taskRow(tb, r, d);
+    let prev = null;
+    for (const r of list) {
+      const g = grouped && tb.id === "tasks" ? taskKey(r, "ms") : null;
+      if (prev !== null && g !== prev) tb.append(el("tr", {class: "gap"}, el("td", {colspan: 6})));
+      prev = g;
+      taskRow(tb, r, d);
+    }
   };
   fill(document.getElementById("tasks"), rows, "No task matches.");
   fill(document.getElementById("tasksDone"), folded, "");
@@ -1237,8 +1247,8 @@ function renderBugs() {
   const q = document.getElementById("bugQ").value.trim().toLowerCase();
   const filtered = bugsData.filter(b => (!state || b.state === state) && bugMatchesPlatform(b, platform) &&
     (!q || (b.id + " " + b.title + " " + (b.fix_id || "") + " " + (b.fix_note || "")).toLowerCase().includes(q)));
-  const open = sortRows("bugs", filtered.filter(bugIsOpen).sort((a, b) => (SEV_ORDER[a.severity] ?? 99) - (SEV_ORDER[b.severity] ?? 99) || a.number - b.number), bugKey);
-  const closed = sortRows("bugs", filtered.filter(b => !bugIsOpen(b)).sort((a, b) => a.number - b.number), bugKey);
+  const open = sortRows("bugs", filtered.filter(b => state || bugIsOpen(b)).sort((a, b) => (SEV_ORDER[a.severity] ?? 99) - (SEV_ORDER[b.severity] ?? 99) || a.number - b.number), bugKey);
+  const closed = sortRows("bugs", filtered.filter(b => !state && !bugIsOpen(b)).sort((a, b) => a.number - b.number), bugKey);
   markSort("bugs");
   document.getElementById("bugCount").textContent = open.length + " open of " + filtered.length + " shown";
   const openTb = document.getElementById("bugsOpen"); openTb.replaceChildren();
@@ -1247,6 +1257,7 @@ function renderBugs() {
   const closedTb = document.getElementById("bugsClosed"); closedTb.replaceChildren();
   for (const b of closed) closedTb.append(bugRow(b));
   document.getElementById("bugsClosedCount").textContent = "(" + closed.length + ")";
+  document.getElementById("bugsClosedDetails").hidden = !!state;  // a picked State shows its rows in one list, like Tasks
   // the tab's number follows the filters: the open bugs shown, or every bug shown when a state is picked
   tabCount("bugs", "Bugs", state ? filtered.length : open.length);
 }
