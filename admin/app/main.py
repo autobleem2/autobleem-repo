@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from .actions import Actions, Audit
+from .branches import Branches
 from .bugs_source import BugsSource
 from .config import settings as default_settings
 from .github import GitHub, GitHubError
@@ -61,6 +62,7 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
     audit = Audit(settings.data_dir)
     source = RoadmapSource(gh, settings)
     bugs_source = BugsSource(gh, settings)
+    branches = Branches(gh, settings)
     app = FastAPI(title="AutoBleem admin", docs_url=None, redoc_url=None, openapi_url="/admin/api/openapi.json")
 
     @app.middleware("http")
@@ -141,6 +143,11 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
             return {"bugs": bugs_source.bugs()}
         except GitHubError as e:
             raise HTTPException(502, str(e))
+
+    @app.get("/admin/api/branches")
+    def get_branches(who=Depends(viewer)):
+        """the feature branches pushed most recently (the Preview box's default and its list)"""
+        return {"branches": branches.recent()}
 
     @app.get("/admin/api/howto/{name}")
     def get_howto(name: str, who=Depends(viewer)):

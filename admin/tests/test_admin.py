@@ -50,6 +50,7 @@ class FakeGitHub:
                         {"id": 2, "name": "runner-2", "status": "offline", "busy": False, "labels": []}]
         self.runners_status = 200
         self.contents = {}  # path (under autobleem-main's develop) -> text, for the roadmap/bugs contents API
+        self.events = {}    # repo -> its events (push events), for the Preview box's recent branches
 
     def cached(self, key, ttl, fn):
         return fn()
@@ -81,6 +82,8 @@ class FakeGitHub:
         if "/jobs?per_page=50" in path:
             run_id = int(path.split("/runs/")[1].split("/")[0])
             return {"jobs": self.jobs.get(run_id, [])}
+        if "/events?per_page" in path:
+            return self.events.get(path.split("/")[3], [])
         if path.endswith("/tags?per_page=100"):
             return [{"name": t} for t in self.tags]
         return {}

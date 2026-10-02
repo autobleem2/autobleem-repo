@@ -399,10 +399,12 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
     <section class="panel actonly">
       <h2>Preview <small>builds a feature branch where it exists, the rest from nightly, into preview/</small></h2>
       <div class="row">
-        <input type="text" id="previewBranch" placeholder="branch, e.g. feature/ab-gui" size="28">
+        <input type="text" id="previewBranch" placeholder="branch, e.g. feature/ab-gui" size="28" list="recentBranches">
+        <datalist id="recentBranches"></datalist>
         <label><input type="checkbox" id="previewDry"> dry run</label>
         <button id="previewGo" type="button">Build preview</button>
       </div>
+      <p class="dim" id="branchHint"></p>
       <p class="dim">the platforms ticked under Nightly above; the newest preview replaces the previous one.</p>
     </section>
 
@@ -1000,6 +1002,17 @@ function hookSort(table, render) {
     render();
   });
 }
+// the Preview box starts with the feature branch pushed most recently (any repository); the others are its list
+async function loadBranches() {
+  let list = [];
+  try { list = (await api("branches")).branches || []; } catch (e) { return; }
+  const box = document.getElementById("previewBranch"), dl = document.getElementById("recentBranches");
+  dl.replaceChildren(...list.map(b => el("option", {value: b.branch}, ago(b.at) + " · " + b.repos.join(", "))));
+  if (!list.length) return;
+  if (!box.value.trim()) box.value = list[0].branch;
+  document.getElementById("branchHint").textContent = "newest push: " + list[0].branch + " (" + ago(list[0].at) + ", " +
+    list[0].repos.join(", ") + ") - the box lists the last " + list.length;
+}
 // a tab's label with the number of rows its table shows now (it follows the filters)
 function tabCount(tab, label, n) {
   const a = document.querySelector('nav.tabs a[data-tab="' + tab + '"]');
@@ -1210,6 +1223,7 @@ async function start() {
         rebuild_all: document.getElementById("rebuildAll").checked,
         dry_run: document.getElementById("nightlyDry").checked});
   };
+  loadBranches();
   document.getElementById("previewGo").onclick = () => {
     const branch = document.getElementById("previewBranch").value.trim();
     if (!branch) { toast("give a branch", true); return; }
