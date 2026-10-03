@@ -1,6 +1,7 @@
 """Reading the test plans and reading/writing the data directory (the layout is in intake/README.md)."""
 import glob
 import json
+import logging
 import os
 import re
 import secrets
@@ -39,12 +40,31 @@ def parse_stamp(text):
     return datetime.strptime(text, ISO).replace(tzinfo=timezone.utc)
 
 
+# The portal's data is shared with the admin panel through one fixed group (gid 10050 in both Dockerfiles): folders
+# are group-writable with setgid, files group-readable, whatever the process umask says.
+DIR_MODE = 0o2770
+FILE_MODE = 0o640
+
+
+def ensure_dir(path):
+    """Create `path` and any missing parent below it with DIR_MODE (umask-proof)."""
+    if os.path.isdir(path):
+        return
+    ensure_dir(os.path.dirname(path))
+    try:
+        os.mkdir(path)
+    except FileExistsError:
+        return
+    os.chmod(path, DIR_MODE)
+
+
 def write_atomic(path, data):
     """A temp file in the same folder, then rename: a reader sees the old file or the whole new one."""
     folder = os.path.dirname(path)
-    os.makedirs(folder, exist_ok=True)
+    ensure_dir(folder)
     fd, tmp = tempfile.mkstemp(dir=folder, prefix=".tmp-")
     try:
+        os.fchmod(fd, FILE_MODE)
         with os.fdopen(fd, "wb") as f:
             f.write(data)
             f.flush()
@@ -86,6 +106,13 @@ class Store:
         self.s = settings
         self.clock = clock
         self._plans = {}
+
+    def prepare(self):
+        """At start: the data directory and decisions/ (the panel writes there) with the shared modes."""
+        try:
+            ensure_dir(os.path.join(self.s.data_dir, "decisions"))
+        except OSError as exc:
+            logging.getLogger("intake").warning("cannot prepare the data directory: %s", exc)
 
     # ---- settings.json
 

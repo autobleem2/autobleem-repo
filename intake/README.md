@@ -96,6 +96,14 @@ service mounts the same `intake_data` volume (at `/intake`, read-write: it write
 `testplans/` is mounted into `intake` read-only. `docker/repo/Caddyfile` routes `/submit/*` to `intake:8000` on the
 HTTPS name and on `:9090`.
 
+**Shared data, two users.** `intake` (uid 10002) and `admin` (uid 10001) stay separate users - the panel holds GitHub
+credentials, intake none, neither is root - and share the volume through one fixed group, `portal` (gid 10050, set in
+both Dockerfiles). Intake creates its folders `2770` (group-writable, setgid) and its files `0640`, `decisions/`
+at start; the panel writes `decisions/<id>.json` as `0640`. A volume made before this (files `0600`, no group) is
+fixed once with (the volume's name is `docker volume ls | grep intake_data`):
+
+    docker run --rm -v <project>_intake_data:/d python:3.12-slim sh -c "mkdir -p /d/decisions && chgrp -R 10050 /d && chmod -R g+rwX,o-rwx /d && find /d -type d -exec chmod g+s {} +"
+
 **Tests** (a `python:3.12-slim` container, like the admin suite):
 
     docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "$PWD":/w -w /w/intake python:3.12-slim \

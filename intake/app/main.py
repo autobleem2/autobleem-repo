@@ -54,6 +54,7 @@ class RateLimiter:
 def create_app(settings=None, clock=utcnow):
     s = settings or Settings()
     store = Store(s, clock)
+    store.prepare()
     limiter = RateLimiter(s.salt)
     trusted = [ipaddress.ip_network(n, strict=False) for n in s.trusted_proxies]
     app = FastAPI(title="AutoBleem tester intake", docs_url=None, redoc_url=None, openapi_url=None)

@@ -100,7 +100,7 @@ def test_expired_claims_do_not_count_as_open(client, clock):
 
 
 def test_settings_json_overrides_the_defaults(client, data):
-    os.makedirs(data)
+    os.makedirs(data, exist_ok=True)
     with open(os.path.join(data, "settings.json"), "w") as f:
         json.dump({"target_passes": 5, "claim_hours": 1}, f)
     assert take(client)["expires"] == "2026-10-03T13:00:00Z"
@@ -108,7 +108,7 @@ def test_settings_json_overrides_the_defaults(client, data):
 
 
 def test_bad_settings_json_falls_back_to_defaults(client, data):
-    os.makedirs(data)
+    os.makedirs(data, exist_ok=True)
     with open(os.path.join(data, "settings.json"), "w") as f:
         f.write("{nope")
     assert client.get("/submit/coverage").json()["target"] == 3
@@ -504,7 +504,7 @@ def test_status_of_a_result_and_an_issue(client):
 
 def test_status_follows_the_panels_decision(client, data):
     iid = post_issue(client).json()["id"]
-    os.makedirs(os.path.join(data, "decisions"))
+    os.makedirs(os.path.join(data, "decisions"), exist_ok=True)
     for state in ("needs-info", "to-reproduce", "bug BUG-12", "not-a-bug", "idea"):
         with open(os.path.join(data, "decisions", iid + ".json"), "w") as f:
             json.dump({"state": state, "reason": "private note", "by": "someone", "at": "2026-10-03"}, f)
@@ -514,7 +514,7 @@ def test_status_follows_the_panels_decision(client, data):
 
 def test_status_with_a_broken_decision_file_is_received(client, data):
     iid = post_issue(client).json()["id"]
-    os.makedirs(os.path.join(data, "decisions"))
+    os.makedirs(os.path.join(data, "decisions"), exist_ok=True)
     with open(os.path.join(data, "decisions", iid + ".json"), "w") as f:
         f.write("{broken")
     assert client.get("/submit/status/" + iid).json()["state"] == "received"
@@ -526,3 +526,20 @@ def test_status_unknown_and_malformed_ids(client):
     assert client.get("/submit/status/ABCDEFGH").status_code == 404
     assert client.get("/submit/status/*").status_code == 404
     assert client.get("/submit/status/abcd1234").json() == {"error": "unknown id"}
+
+
+# ---- the shared group (the admin panel reads this volume and writes decisions/)
+
+def test_modes_are_group_shared_whatever_the_umask(client, data):
+    old = os.umask(0o077)
+    try:
+        take(client)
+        client.post("/submit/testplan", json=result())
+        post_issue(client, issue_form(consent_logs="on"), logs=make_zip({"a": "b"}))
+    finally:
+        os.umask(old)
+    for path in files_under(data):
+        assert os.stat(path).st_mode & 0o777 == 0o640, path
+    for folder in [d for d, _, _ in os.walk(data)]:
+        assert os.stat(folder).st_mode & 0o7777 == 0o2770, folder
+    assert os.path.isdir(os.path.join(data, "decisions"))   # made at start, for the panel to write into
