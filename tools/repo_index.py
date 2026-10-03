@@ -64,7 +64,7 @@ import sys
 from datetime import datetime, timezone
 
 # bump on every change: tools/repo_publish.sh only replaces the copy the repository runs with a newer one
-INDEX_VERSION = 47
+INDEX_VERSION = 48
 
 # the splash page's "Where we are" block updates itself (2026-10-03, the owner): the release rows come from
 # index_releases (splash_release_rows: the newest stable release, the newer pre-release, the next milestone) and
@@ -1495,6 +1495,10 @@ a.support:hover img{opacity:0}
 """
 
 
+# set by index_testplans: the site has test plans, so every page's bar links the Testing pages
+HAS_TESTING = False
+
+
 def page_head(title, tagline, extra_css=""):
     """The top of every inner page: the document head, a slim bar with the emblem and the links, and a short
     banner - the page's line on the left, the C3 logo on the right - so the first screen shows what to download.
@@ -1506,10 +1510,11 @@ def page_head(title, tagline, extra_css=""):
             "<header class=\"top\"><div class=\"bar\"><a class=\"brand\" href=\"/\"><img src=\"/assets/emblem.png\" "
             "srcset=\"/assets/emblem@2x.png 2x\" alt=\"\">AutoBleem 2 <span>Downloads</span></a><nav>"
             "<a href=\"/store/\">Store</a><a href=\"/repository/#manuals\">Manual</a><a href=\"/releases/\">All files</a>"
-            "<a href=\"https://github.com/autobleem2\">GitHub</a></nav></div></header>"
+            "%s<a href=\"https://github.com/autobleem2\">GitHub</a></nav></div></header>"
             "<div class=\"hero\"><div class=\"in\"><p>%s</p><img src=\"/assets/logo.png\" "
             "srcset=\"/assets/logo@2x.png 2x\" alt=\"AutoBleem 2\"></div></div>"
-            % (e(title), ICON_LINKS, PAGE_CSS, extra_css, COPY_SCRIPT, e(tagline)))
+            % (e(title), ICON_LINKS, PAGE_CSS, extra_css, COPY_SCRIPT,
+               "<a href=\"/testing/\">Testing</a>" if HAS_TESTING else "", e(tagline)))
 
 
 # the Copy buttons (imager_notice): the clipboard API on the https site, a hidden textarea where it is missing
@@ -2457,6 +2462,8 @@ def index_testplans(repo):
     """testplans/<version>/<platform>.yaml -> testplans/index.json (the contract: intake/README.md) and what the
     pages need: {"current", "versions", "plans": {platform: plan}, "pdf": {platform: url path}}; None without any
     plan. The current version is the highest folder by version_key."""
+    global HAS_TESTING
+    HAS_TESTING = False
     root = os.path.join(repo, "testplans")
     if not os.path.isdir(root):
         return None
@@ -2482,6 +2489,7 @@ def index_testplans(repo):
                           "minutes": sum(s["minutes"] for s in plan["sections"])} for p, plan in plans.items()}})
     pdf = {p: "/testplans/%s/%s.pdf" % (current, p) for p in plans
            if os.path.isfile(os.path.join(root, current, p + ".pdf"))}
+    HAS_TESTING = True
     print("testplans: %s, %d versions, platforms %s" % (current, len(versions), ", ".join(plans)))
     return {"current": current, "versions": versions[::-1], "plans": plans, "pdf": pdf}
 
@@ -2771,8 +2779,8 @@ def render_testing_index(info):
     cards = []
     for p, plan in info["plans"].items():
         minutes = sum(s["minutes"] for s in plan["sections"])
-        pdf = ("<p class=\"older\" style=\"margin:.7rem 0 0;font-size:.82rem\"><a href=\"%s\">The whole plan as a "
-               "printable PDF</a></p>" % e(info["pdf"][p]) if p in info["pdf"] else "")
+        pdf = ("<p class=\"older\" style=\"margin:.7rem 0 0;font-size:.82rem\"><a href=\"%s\">Printable "
+               "version</a></p>" % e(info["pdf"][p]) if p in info["pdf"] else "")
         cards.append("<div class=\"panel\"><h3>%s</h3><p>%d sections in all, about %d minutes.</p>"
                      "<p class=\"older cov\" data-p=\"%s\"></p><a class=\"dl wide\" href=\"/testing/%s.html\">"
                      "Give me a task (~10 min)</a>%s</div>" % (e(plan["title"]), len(plan["sections"]), minutes, e(p), e(p), pdf))
@@ -2915,6 +2923,7 @@ def main():
         sys.exit("not a directory: %s" % repo)
     base_url = args.base_url.rstrip("/")
 
+    testplans = index_testplans(repo)  # first: it decides whether every page's bar links Testing
     releases = index_releases(repo, base_url)
     builds = index_retroarch(repo, base_url)
     cores = index_cores(repo, base_url)
@@ -2955,7 +2964,6 @@ def main():
         os.makedirs(os.path.join(repo, "store"), exist_ok=True)
         pages.append((os.path.join("store", "index.html"),
                       render_store(base_url, store_pages, extensions.get("store"), extensions.get("lanshare"))))
-    testplans = index_testplans(repo)
     if testplans:
         os.makedirs(os.path.join(repo, "testing"), exist_ok=True)
         pages.extend(testing_pages(testplans))

@@ -62,8 +62,10 @@ run reads them (`index_testplans`, a small YAML-subset parser - the server has n
 (a card per platform, the coverage hint from `/submit/coverage`), `<platform>.html` (the task page: the whole plan
 embedded as JSON, one section shown after `/submit/claim`), `report.html`, `thanks.html`, `status.html`. No
 `testplans/` folder = no pages. The pages use `page_head` and `PAGE_CSS` plus `TESTING_CSS` (from
-`mockups/testing/site.css`); the plan's texts only ever reach the page as JSON data and `textContent`. The top bar has
-no Testing link until alpha1 is released (the owner's decision). Tested in `tests/test_testing_pages.py`.
+`mockups/testing/site.css`); the plan's texts only ever reach the page as JSON data and `textContent`. Every page's
+top bar links **Testing** (`/testing/`) once a plan exists. A `<platform>.pdf` published in the same call as its
+`<platform>.yaml` (the hub's printable plan) goes into the same folder and the landing card links it as "Printable
+version". Tested in `tests/test_testing_pages.py`.
 
 ## The AutoBleem Store's catalog (2026-09-24)
 
@@ -118,7 +120,8 @@ The owner approved the 2026-09-23 redesign ("look and feel of the page is great"
 when asked.** New content fits into the existing pieces, it does not bring its own.
 
 - **The top.** Every inner page starts with `page_head(title, tagline)`: the slim sticky bar (emblem, "AutoBleem 2
-  Downloads", Store / Manual / All files / GitHub) and the short banner - one line of text on the left, the C3
+  Downloads", Store / Manual / All files / Testing / GitHub - Testing only when the site has `testplans/index.json`,
+  `HAS_TESTING`) and the short banner - one line of text on the left, the C3
   logo on the right (hidden on a phone). Never a full-width hero again, never a second header.
 - **The palette and type** are `PAGE_CSS`'s `:root` tokens (graphite, cyan, magenta, ink, dim; rel/pre/dev/warn)
   and Red Hat Text. No colours or fonts outside them.
