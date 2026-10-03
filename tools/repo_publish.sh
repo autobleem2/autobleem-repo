@@ -65,7 +65,8 @@
 #                                                                                 pc-retroarch/pc-cores/
 #                                                                                 psc-retroarch/win-retroarch/
 #                                                                                 pcsx/pcsx-ab/pcsx-nightly, or
-#                                                                                 "extension <name> <version>")
+#                                                                                 "extension <name> <version>", or
+#                                                                                 "version <v>": all of a version)
 #                                                                                 and re-indexes: the newest
 #                                                                                 *remaining* version is then
 #                                                                                 what latest.json/release.json/
@@ -141,7 +142,8 @@ necessarily the version just withdrawn (repo_index.py's index_* functions read t
 with os.listdir(), so once the folder is gone the next-newest wins on its own).
 
 <kind> is one of: release, nightly, preview, image, retroarch, cores, pc-image, pc-retroarch,
-pc-cores, psc-retroarch, win-retroarch, pcsx, pcsx-ab, extension.
+pc-cores, psc-retroarch, win-retroarch, pcsx, pcsx-ab, pcsx-nightly, extension - or `version`: every folder of
+that version (and of the development builds counted from it) in every versioned tree, for a withdrawn release.
 
 --dry-run prints the exact folder and its files, and the re-index command that would run,
 then exits without touching anything - its ssh call is a read-only listing only.
@@ -181,39 +183,39 @@ do_withdraw() {
         pcsx-ab)       [ -n "$pos1" ] || withdraw_usage 1; wdest="emu/pcsx-ab/$pos1" ;;
         pcsx-nightly)      [ -n "$pos1" ] || withdraw_usage 1; wdest="emu/pcsx-abnxt/nightly/$pos1" ;;
         extension)     [ -n "$pos1" ] && [ -n "$pos2" ] || withdraw_usage 1; wdest="extensions/$pos1/$pos2" ;;
+        # a whole version, everywhere (2026-10-03: the withdrawn v2.0.0-alpha2's images and emulator builds were left
+        # behind by a release-only withdraw, and the index then pruned the new alpha1 as "older"): every folder named
+        # <version> or <version>-<n>-g<hash>... (a development build counted from it) under the versioned trees
+        version)       [ -n "$pos1" ] || withdraw_usage 1; wdest="" ;;
         *) echo "unknown withdraw kind: $wkind" >&2; withdraw_usage 1 ;;
     esac
 
-    local listing index_cmd
+    local listing index_cmd wdests run
     index_cmd="cd '$REPO_DIR' && python3 .tools/repo_index.py . --base-url '$AB_REPO_URL'"
-    if [ "$wlocal" -eq 1 ]; then
-        if [ -d "$REPO_DIR/$wdest" ]; then
-            listing="$(find "$REPO_DIR/$wdest" -maxdepth 1 -mindepth 1 -printf '%f\n' | sort)"
-        else
-            listing=""
-        fi
+    if [ "$wlocal" -eq 1 ]; then run() { bash -c "$1"; }; else run() { ssh "$REPO_HOST" "$1"; }; fi
+    if [ "$wkind" = version ]; then
+        wdests="$(run "cd '$REPO_DIR' && find releases rpi-imager/images pc/images emu nightly preview -mindepth 1 -maxdepth 3 \
+            -type d \\( -name '$pos1' -o -name '$pos1-[0-9]*' \\) -prune -print 2>/dev/null | sort || true")"
     else
-        listing="$(ssh "$REPO_HOST" "[ -d '$REPO_DIR/$wdest' ] && find '$REPO_DIR/$wdest' -maxdepth 1 -mindepth 1 -printf '%f\\n' | sort || true")"
+        wdests="$(run "[ -d '$REPO_DIR/$wdest' ] && echo '$wdest' || true")"
     fi
-    if [ -z "$listing" ]; then
-        echo "nothing to withdraw: $REPO_DIR/$wdest does not exist ($( [ "$wlocal" -eq 1 ] && echo "on this machine" || echo "on $REPO_HOST"))" >&2
+    if [ -z "$wdests" ]; then
+        echo "nothing to withdraw: no ${wdest:-folder of $pos1} in $REPO_DIR ($( [ "$wlocal" -eq 1 ] && echo "on this machine" || echo "on $REPO_HOST"))" >&2
         exit 1
     fi
-    echo "withdraw: $wdest (kind=$wkind)"
-    echo "will remove $REPO_DIR/$wdest/ and its files:"
-    echo "$listing" | sed 's/^/  /'
+    echo "withdraw: kind=$wkind"
+    while IFS= read -r d; do
+        listing="$(run "find '$REPO_DIR/$d' -maxdepth 1 -mindepth 1 -printf '%f\\n' | sort" </dev/null)"  # ssh would eat the loop's input
+        echo "will remove $REPO_DIR/$d/ and its files:"
+        echo "$listing" | sed 's/^/  /'
+    done <<<"$wdests"
     echo "will then re-run: python3 .tools/repo_index.py . --base-url $AB_REPO_URL (in $REPO_DIR$( [ "$wlocal" -eq 1 ] && echo " on this machine" || echo " on $REPO_HOST"))"
     if [ "$dry" -eq 1 ]; then
         echo "--dry-run: nothing removed, nothing re-indexed"
         exit 0
     fi
-    if [ "$wlocal" -eq 1 ]; then
-        rm -rf "$REPO_DIR/$wdest"
-        bash -c "$index_cmd"
-    else
-        ssh "$REPO_HOST" "set -e; rm -rf '$REPO_DIR/$wdest'; $index_cmd"
-    fi
-    echo "withdrawn and re-indexed: $wdest"
+    run "set -e; cd '$REPO_DIR'; $(while IFS= read -r d; do printf "rm -rf '%s'; " "$d"; done <<<"$wdests") $index_cmd"
+    echo "withdrawn and re-indexed: $(tr '\n' ' ' <<<"$wdests")"
 }
 
 if [ "${1:-}" = withdraw ]; then

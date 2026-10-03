@@ -28,6 +28,9 @@ and logos), then the page.
 - From Windows run it in the MSYS2 shell (Git Bash has no rsync):
   `bash tools/repo_publish.sh index` just regenerates the pages. It finds a Windows Python by itself (an MSYS2
   login shell drops the Windows PATH: `find_python` looks under %LOCALAPPDATA%); `PYTHON=<path>` overrides it.
+- A withdrawn release goes with `repo_publish.sh withdraw version <v>` (always `--dry-run` first): every folder of
+  that version - the release, both image sets, the emulators and the development builds counted from it. A
+  leftover of it makes the index prune a newer version as "older" (2026-10-03, the old alpha2 and the new alpha1).
 - Try a page change first against a copy of the tree (`python3 tools/repo_index.py <copy>`) and look at it in
   a browser - desktop and phone width - before publishing.
 - A `--local` publish run as root (a CI container) hands the tree back to its owner at the end; a failed
