@@ -24,6 +24,7 @@ from .notify import Notifier
 from .roadmap_source import RoadmapSource
 from .runs import Runs
 from .site import Health, channels, store_catalog
+from .testers import Intake
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 NEED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,63}$")
@@ -51,6 +52,12 @@ class RerunRequest(BaseModel):
     failed_only: bool = True
 
 
+class DecisionRequest(BaseModel):
+    state: str
+    reason: str = ""
+    bug: str = ""
+
+
 class WithdrawRequest(BaseModel):
     kind: str
     version: str
@@ -65,6 +72,7 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
     bugs_source = BugsSource(gh, settings)
     branches = Branches(gh, settings)
     downloads = Downloads(settings)
+    intake = Intake(settings)
     app =FastAPI(title="AutoBleem admin", docs_url=None, redoc_url=None, openapi_url="/admin/api/openapi.json")
 
     @app.middleware("http")
@@ -138,6 +146,40 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
     def get_downloads(who=Depends(manager)):
         """how often each file was downloaded (admin/app/downloads.py): totals, 7/30 days, top, per group"""
         return downloads.fresh_report()
+
+    @app.get("/admin/api/testresults")
+    def get_test_results(version: str = "", who=Depends(viewer)):
+        """the tester portal's stored results per platform: counts and the steps-by-outcome matrix (testers.py)"""
+        return intake.test_results(version)
+
+    @app.get("/admin/api/testresults/{platform}/{version}/{result_id}")
+    def get_raw_result(platform: str, version: str, result_id: str, who=Depends(viewer)):
+        path = intake.raw_result(platform, version, result_id)
+        if path is None:
+            raise HTTPException(404, "no such result")
+        return FileResponse(path, media_type="application/json", filename="%s-%s-%s.json" % (platform, version, result_id))
+
+    @app.get("/admin/api/coverage")
+    def get_coverage(version: str = "", who=Depends(viewer)):
+        return intake.coverage(version)
+
+    @app.get("/admin/api/reports")
+    def get_reports(who=Depends(viewer)):
+        return {"reports": intake.reports()}
+
+    @app.get("/admin/api/reports/{report_id}/logs")
+    def get_report_logs(report_id: str, who=Depends(viewer)):
+        path = intake.logs_path(report_id)
+        if path is None:
+            raise HTTPException(404, "no logs for this report")
+        return FileResponse(path, media_type="application/zip", filename="logs-%s.zip" % report_id)
+
+    @app.post("/admin/api/reports/{report_id}/decision")
+    def decide_report(report_id: str, body: DecisionRequest, who=Depends(actor)):
+        if not intake.known(report_id):
+            raise HTTPException(404, "no such report")
+        return act(who, "report-decision", {"id": report_id, **body.model_dump()},
+                   lambda: intake.decide(report_id, body.state, who["login"], body.reason, body.bug))
 
     @app.get("/admin/api/audit")
     def get_audit(who=Depends(viewer)):

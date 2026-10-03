@@ -278,6 +278,9 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
   <a href="#roadmap" data-tab="roadmap">Roadmap</a>
   <a href="#tasks" data-tab="tasks">Tasks</a>
   <a href="#bugs" data-tab="bugs">Bugs</a>
+  <a href="#results" data-tab="results">Test results</a>
+  <a href="#coverage" data-tab="coverage">Coverage</a>
+  <a href="#reports" data-tab="reports">Reports</a>
   <a href="#releases" data-tab="releases">Releases</a>
   <a href="#builds" data-tab="builds">Builds</a>
   <a href="#downloads" data-tab="downloads" id="downloadsLink" hidden>Download stats</a>
@@ -373,6 +376,30 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
           <tbody id="bugsClosed"></tbody>
         </table></div>
       </details>
+    </section>
+  </section>
+
+  <section id="tab-results" class="tab-content">
+    <section class="panel">
+      <h2>Test results <small class="dim">the volunteers' answers per platform, step by step</small></h2>
+      <div class="row"><label class="f"><span>Version</span><select id="resVersion"></select></label></div>
+      <div id="resBody"><p class="dim">Loading...</p></div>
+    </section>
+  </section>
+
+  <section id="tab-coverage" class="tab-content">
+    <section class="panel">
+      <h2>Coverage <small class="dim" id="covNote">passes / problems against the target</small></h2>
+      <div class="row"><label class="f"><span>Version</span><select id="covVersion"></select></label></div>
+      <div id="covBody"><p class="dim">Loading...</p></div>
+    </section>
+  </section>
+
+  <section id="tab-reports" class="tab-content">
+    <section class="panel">
+      <h2>Reports <small id="repCount" class="dim"></small></h2>
+      <p class="dim">Issue reports and test results with a problem, newest first. A decision is only a note for QA - nothing is written to the bug list from here.</p>
+      <div id="repBody"><p class="dim">Loading...</p></div>
     </section>
   </section>
 
@@ -525,7 +552,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
 const API = "/admin/api/";let canAct = false, firstStatus = true;
 const seenActive = new Set();
 const selectedJob = {}; // run id -> job name selected in that card
-const TABS = ["roadmap", "tasks", "bugs", "releases", "builds", "store", "downloads", "server"];  // the audit log lives on the Server tab (an old #audit link opens it)
+const TABS = ["roadmap", "tasks", "bugs", "results", "coverage", "reports", "releases", "builds", "store", "downloads", "server"];  // the audit log lives on the Server tab (an old #audit link opens it)
 
 function el(tag, attrs, ...kids) {
   const e = document.createElement(tag);
@@ -1337,6 +1364,85 @@ document.getElementById("bugQ").addEventListener("input", renderBugs);
 document.getElementById("bugState").addEventListener("change", renderBugs);
 document.getElementById("bugPlatform").addEventListener("change", renderBugs);
 
+// -------------------------------------------------------------------------------- tester portal tabs
+// Everything a tester wrote goes in through el() as text nodes, never as markup.
+function fillVersions(select, d) {
+  select.replaceChildren(...d.versions.map(v => el("option", v === d.version ? {value: v, selected: "selected"} : {value: v}, v)));
+}
+async function loadResults(version) {
+  const body = document.getElementById("resBody");
+  try {
+    const d = await api("testresults" + (version ? "?version=" + encodeURIComponent(version) : ""));
+    fillVersions(document.getElementById("resVersion"), d);
+    if (!d.platforms.length) { body.replaceChildren(el("p", {class: "dim"}, "No data yet.")); return; }
+    body.replaceChildren(...d.platforms.map(p => el("details", {open: "open"},
+      el("summary", {}, p.title + " (" + p.platform + ") - " + p.count + " result" + (p.count === 1 ? "" : "s")),
+      el("div", {class: "scroll"}, el("table", {},
+        el("thead", {}, el("tr", {}, el("th", {}, "Step"), el("th", {}, "OK"), el("th", {}, "Problem"), el("th", {}, "N/A"))),
+        ...p.sections.map(s => el("tbody", {},
+          el("tr", {}, el("th", {colspan: 4}, s.title + " ", el("small", {class: "dim"}, s.id))),
+          ...s.steps.flatMap(st => [
+            el("tr", {}, el("td", {}, el("code", {}, st.id), " ", st.do), el("td", {class: "ok"}, st.ok),
+              el("td", {class: st.problem ? "bad" : "dim"}, st.problem), el("td", {class: "dim"}, st.na)),
+            ...st.problems.map(pr => el("tr", {}, el("td", {colspan: 4, class: "bad"},
+              "problem (" + pr.result + (pr.device ? ", " + pr.device : "") + "): " + pr.comment)))])))),
+      el("p", {}, "Raw results: ", ...p.results.flatMap(r => [el("a", {
+        href: API + "testresults/" + encodeURIComponent(p.platform) + "/" + encodeURIComponent(d.version) + "/" + r.id,
+        title: r.received + " " + r.section}, r.id), " "])))));
+  } catch (e) { body.replaceChildren(el("p", {class: "bad"}, e.message)); }
+}
+async function loadCoverage(version) {
+  const body = document.getElementById("covBody");
+  try {
+    const d = await api("coverage" + (version ? "?version=" + encodeURIComponent(version) : ""));
+    fillVersions(document.getElementById("covVersion"), d);
+    document.getElementById("covNote").textContent = "passes / problems, target " + d.target + " passes; claims open / expired (" + d.claim_hours + " h)";
+    if (!d.sections.length) { body.replaceChildren(el("p", {class: "dim"}, "No data yet.")); return; }
+    body.replaceChildren(el("div", {class: "scroll"}, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Section"), ...d.platforms.map(p => el("th", {}, p)))),
+      el("tbody", {}, ...d.sections.map(s => el("tr", {}, el("td", {}, s.title + " ", el("small", {class: "dim"}, s.id)),
+        ...d.platforms.map(p => {
+          const c = s.cells[p];
+          if (!c) return el("td", {class: "dim"}, "-");
+          return el("td", {class: c.passes < d.target ? "warn" : "ok"}, c.passes + " / " + c.problems + " ",
+            el("small", {class: "dim"}, "(claims " + c.open + " / " + c.expired + ")"));
+        })))))));
+  } catch (e) { body.replaceChildren(el("p", {class: "bad"}, e.message)); }
+}
+const DECISION_BUTTONS = [["to-reproduce", "To reproduce"], ["not-a-bug", "Not a bug"], ["idea", "Idea"], ["needs-info", "Needs info"]];
+async function decide(id, state, extra) {
+  try { toast((await post("reports/" + id + "/decision", Object.assign({state}, extra || {}))).result); loadReports(); loadAudit(); }
+  catch (e) { toast(e.message, true); }
+}
+function reportRow(r) {
+  const fields = Object.entries(r.fields || {}).map(([k, v]) => el("div", {}, el("b", {}, k + ": "),
+    typeof v === "string" ? v : JSON.stringify(v)));
+  const state = r.state + (r.reason ? " - " + r.reason : "") + (r.by ? " (" + r.by + ")" : "");
+  const buttons = DECISION_BUTTONS.map(([s, label]) => el("button", {type: "button", onclick: () => {
+    let reason = "";
+    if (s === "not-a-bug") { reason = prompt("Why is it not a bug? (short reason)"); if (!reason) return; }
+    decide(r.id, s, {reason});
+  }}, label));
+  const bug = el("input", {type: "text", size: "9", placeholder: "BUG-N"});
+  return el("details", {class: "panel"},
+    el("summary", {}, el("code", {}, r.id), " " + r.kind + " - " + (r.platform || "?") + " " + (r.version || "") + " - ",
+      el("span", {class: "chip"}, state), " ", el("small", {class: "dim"}, r.received)),
+    ...fields,
+    r.has_logs ? el("p", {}, el("a", {href: API + "reports/" + r.id + "/logs"}, "Download logs (zip)")) : null,
+    el("div", {class: "row actonly"}, ...buttons, bug,
+      el("button", {type: "button", onclick: () => decide(r.id, "bug", {bug: bug.value.trim()})}, "Record as bug")));
+}
+async function loadReports() {
+  const body = document.getElementById("repBody");
+  try {
+    const list = (await api("reports")).reports;
+    document.getElementById("repCount").textContent = "(" + list.length + ")";
+    body.replaceChildren(...(list.length ? list.map(reportRow) : [el("p", {class: "dim"}, "No data yet.")]));
+  } catch (e) { body.replaceChildren(el("p", {class: "bad"}, e.message)); }
+}
+document.getElementById("resVersion").addEventListener("change", e => loadResults(e.target.value));
+document.getElementById("covVersion").addEventListener("change", e => loadCoverage(e.target.value));
+
 // -------------------------------------------------------------------------------- tabs
 function currentTab() {
   const h = (location.hash || "").replace("#", "");
@@ -1354,6 +1460,9 @@ function showTab(name) {
   if (name === "downloads") loadDownloads();
   if ((name === "roadmap" || name === "tasks") && !loadRoadmap.loaded) loadRoadmap();
   if (name === "bugs" && !loadBugs.loaded) loadBugs();
+  if (name === "results") loadResults();
+  if (name === "coverage") loadCoverage();
+  if (name === "reports") loadReports();
 }
 function initTabs() {
   let name = currentTab();

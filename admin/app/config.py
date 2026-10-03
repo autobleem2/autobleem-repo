@@ -22,6 +22,9 @@ class Settings:
     data_dir: str = os.environ.get("AB_DATA_DIR", "/data")
     # Caddy's access log (a shared volume, read-only here): what the Downloads tab counts
     log_dir: str = os.environ.get("AB_LOG_DIR", "/logs")
+    # the tester portal's data volume (intake/README.md): the Test results, Coverage and Reports tabs read it and
+    # write only decisions/ there; a missing directory means "no data yet"
+    intake_dir: str = os.environ.get("AB_INTAKE_DIR", "/intake")
     # the Teams tab's private feed (teams.json), mounted read-only from a directory outside the site's tree
     teams_file: str = os.environ.get("AB_ADMIN_TEAMS_FILE", "/feed/teams.json")
     # the repositories whose runs the panel shows
