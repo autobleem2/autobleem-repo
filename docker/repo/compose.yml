@@ -32,6 +32,7 @@ services:
       - ${REPO_DIR:-/home/claude/autobleem-repo}:/srv/repo:ro
       - caddy_data:/data
       - caddy_config:/config
+      - caddy_logs:/var/log/caddy   # the access log the download counter reads (admin/README.md)
       - ${PRIVATE_CADDY_DIR:-/home/claude/foundry-caddy}:/etc/caddy/private:ro
 
   # the panel's service: the JSON API and the page (admin/)
@@ -45,7 +46,9 @@ services:
       AB_REPO_DIR: /srv/repo
       AB_DATA_DIR: /data
       AB_ADMIN_TEAMS_FILE: /feed/teams.json
+      AB_LOG_DIR: /logs
     volumes:
+      - caddy_logs:/logs:ro
       - ${REPO_DIR:-/home/claude/autobleem-repo}:/srv/repo:ro
       # the Teams tab's private feed: the company copies teams.json here. Only this service mounts it - Caddy
       # serves /srv/repo alone, so nothing here is reachable from the web.
@@ -76,4 +79,5 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  caddy_logs:
   admin_data:

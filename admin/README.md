@@ -4,7 +4,7 @@
 server's health, and the release team's buttons (a nightly, a promotion, cancel / re-run, withdraw, republish
 the page). The plan and the reasons: `autobleem-main`'s `docs/archive/admin-panel-plan.md`.
 
-The page has five tabs. **Builds** shows running and finished runs as cards with progress, job lists, steps and durations;
+The page has six tabs (the Download stats tab, release team only, is described at the end). **Builds** shows running and finished runs as cards with progress, job lists, steps and durations;
 the queue of waiting runs and jobs; and the self-hosted runners and their active jobs. **Releases** holds the channels,
 nightly and promotion actions, and withdraw/republish buttons. **Store** lists the site's catalogs
 (`store/<platform>/catalog.json`, read-only). **Server** shows the build server's health. **Audit** is the release
@@ -68,3 +68,39 @@ dry run): `tools/server_cleanup.sh` removes the old `autobleem-build:<sha>` imag
 containers and build cache unused for three days, then the page is regenerated, which prunes the site's
 nightlies to one (`NIGHTLY_KEEP` in `tools/repo_index.py`; the one before stays while the newest has no images
 yet). The panel's Health row turns red under `AB_LOW_DISK_GB` (10) free, and Telegram says so once.
+
+## Download stats (the download counter)
+
+The **Download stats** tab (release team only; `GET /admin/api/downloads` answers 403 to a plain member) shows how
+often each file of the site was downloaded: a summary on opening (today / 7 days / 30 days / all time, the top 10
+files of the last 7 days, the last 30 days by platform and by channel), then the totals by group, by version and
+for every file. Nothing of it is public.
+
+- **What is counted**: a `GET` answered `200` for a file of a download type (`DOWNLOAD_EXT` in `app/downloads.py`:
+  zip, gz, xz, img, pdf, exe ...), per UTC day. Not counted: `HEAD`, `304`, `404`, `206` (a resumed or ranged
+  download - its first request was counted; a client that only ever sends ranges is not), the panel's own paths,
+  JSON/HTML, and requests whose user agent says bot/spider/crawl (Caddy leaves them out of the log). Builds,
+  installers and CI fetching from the site count like any other download - without an IP or user agent the log
+  cannot tell them from a person, and keeping those is the one thing the counter must not do.
+- **Privacy**: stored are only `(day, path, count)`. Caddy's access log is filtered before it is written: no IP
+  address, no port, no request header (so no user agent, cookie or referrer), no response header. Nothing can be
+  tied to a person, so there is nothing to expire or delete on request.
+- **Where the data lives**: `downloads.sqlite3` in the admin service's data volume (`admin_data`, `/data`);
+  the raw log in the `caddy_logs` volume (10 MiB files, the newest 10, at most 30 days). The path tells the group
+  (top folder), the platform (`psc`, `rpi`, `rpi64`, `pcusb`, `windows`), the version and the channel
+  (`preview/` and `nightly/` folders; a pre-release version = testing; a plain version = release) - worked out
+  when the page is read, not stored.
+- **How it runs**: no script in the download path (Caddy serves static files). The admin service reads the log
+  every 10 minutes and whenever the tab is opened and the last read is older than 30 s. A read is incremental:
+  each log file is told apart by its inode, its offset is saved in the same SQLite transaction as its counts
+  (a count is never doubled), a half-written last line waits, and a rotated file is finished before it goes.
+  Counting starts when the log is switched on - there is no history before it.
+- **Switching it on (the sysadmin, once, on the build server)**: from the site's checkout, after the merge,
+  `cd docker/repo && docker compose --profile admin up -d --build` (recreates Caddy with the log and the
+  `caddy_logs` volume, and the admin service with the read-only mount). Then download a file from the site and
+  open the tab after a minute. If the counts stay empty: `docker compose exec caddy ls -l /var/log/caddy` (is
+  there an `access.log`?) and `docker compose logs caddy` (a `log_skip` or `mode` error means a Caddy older
+  than 2.8 - `docker compose pull caddy`). The log covers the HTTPS name only, not the plain `:9090` listener.
+
+Tests: `tests/test_downloads.py` (log lines incl. 200/206/304/404/HEAD, rotation, partial lines, the
+report's windows, the endpoint's access).

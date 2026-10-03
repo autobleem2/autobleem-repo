@@ -47,6 +47,35 @@
     }
 }
 
+# The download counter's source (admin/app/downloads.py): a JSON access log of the HTTPS name, in a volume the
+# admin service reads. It carries no IP address and no header - the filter deletes them before the line is written -
+# and a request of a known bot or crawler is not logged at all. Rotated in plain text (the reader tells files by
+# inode, and a compressed file would be a new one). Nothing here changes what a visitor gets.
+(counted) {
+    @bots header_regexp User-Agent (?i)(bot|spider|crawl|slurp|facebookexternalhit|preview)
+    log_skip @bots
+    log {
+        output file /var/log/caddy/access.log {
+            mode 0644
+            roll_size 10MiB
+            roll_keep 10
+            roll_keep_for 720h
+            roll_uncompressed
+        }
+        format filter {
+            wrap json
+            fields {
+                request>remote_ip delete
+                request>remote_port delete
+                request>client_ip delete
+                request>headers delete
+                request>tls delete
+                resp_headers delete
+            }
+        }
+    }
+}
+
 # HTTPS, certificate from Let's Encrypt over TLS-ALPN-01 (needs only port 443 reachable at this name)
 {$REPO_HOST} {
     tls {
@@ -54,6 +83,7 @@
             disable_http_challenge
         }
     }
+    import counted
     import /etc/caddy/private/*.caddy
     import admin
     handle {

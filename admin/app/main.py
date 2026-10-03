@@ -18,6 +18,7 @@ from .actions import Actions, Audit
 from .branches import Branches
 from .bugs_source import BugsSource
 from .config import settings as default_settings
+from .downloads import Downloads
 from .github import GitHub, GitHubError
 from .notify import Notifier
 from .roadmap_source import RoadmapSource
@@ -63,7 +64,8 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
     source = RoadmapSource(gh, settings)
     bugs_source = BugsSource(gh, settings)
     branches = Branches(gh, settings)
-    app = FastAPI(title="AutoBleem admin", docs_url=None, redoc_url=None, openapi_url="/admin/api/openapi.json")
+    downloads = Downloads(settings)
+    app =FastAPI(title="AutoBleem admin", docs_url=None, redoc_url=None, openapi_url="/admin/api/openapi.json")
 
     @app.middleware("http")
     async def never_cached(request: Request, call_next):
@@ -92,6 +94,12 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
             raise HTTPException(403, "%s is not in the %s team" % (who["login"], settings.release_team))
         if who["via"] == "browser" and request.headers.get("x-ab-request") != "1":
             raise HTTPException(403, "missing X-AB-Request")
+        return who
+
+    def manager(who=Depends(viewer)):
+        """reading that is the release team's alone (the download counts)"""
+        if not who["can_act"]:
+            raise HTTPException(403, "%s is not in the %s team" % (who["login"], settings.release_team))
         return who
 
     def act(who, action, params, fn):
@@ -125,6 +133,11 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
     @app.get("/admin/api/store")
     def get_store(who=Depends(viewer)):
         return store_catalog(settings.repo_dir)
+
+    @app.get("/admin/api/downloads")
+    def get_downloads(who=Depends(manager)):
+        """how often each file was downloaded (admin/app/downloads.py): totals, 7/30 days, top, per group"""
+        return downloads.fresh_report()
 
     @app.get("/admin/api/audit")
     def get_audit(who=Depends(viewer)):
@@ -228,6 +241,7 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
 
     if start_notifier:
         Notifier(runs, settings).start()
+        downloads.start()
     return app
 
 
