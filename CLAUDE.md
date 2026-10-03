@@ -9,7 +9,8 @@ autobleem-design's `www/` makes them).
 
 ## The site's addresses (2026-10-01)
 
-`/` is the **splash** (`render_splash()`: `SPLASH_STATUS` is the "Where we are" block the owner edits, the
+`/` is the **splash** (`render_splash()`: the "Where we are" block updates itself - `splash_release_rows` from the releases (the
+newest stable, the newer pre-release, the next milestone), `SPLASH_STATUS` for extra rows by hand, the
 nightly row comes from `index_nightly`, `KOFI_URL` is the Support button - empty = no button). The download
 listing and the two manuals live in **`/repository/`** (`index.html`, `rpi-install.html`, `pc-install.html`);
 the old `/rpi-install.html` and `/pc-install.html` are small refresh + link stubs (`render_moved`). The store page

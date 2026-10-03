@@ -17,14 +17,19 @@ def nightly_build(date="2026-09-30 03:12 UTC", files=True):
             "files": {"psc": {"name": "x"}} if files else {}, "images": {}, "other_files": []}
 
 
+def release(version, date="2026-10-03"):
+    return {"version": version, "prerelease": repo_index.is_prerelease(version), "date": date, "files": {}}
+
+
 def test_splash_has_the_status_rows_the_download_button_and_the_kofi_button():
-    page = repo_index.render_splash(BASE_URL, [nightly_build()])
+    page = repo_index.render_splash(BASE_URL, [nightly_build()], [release("v2.0.0-alpha1")])
     assert "<h1>AutoBleem 2 is coming</h1>" in page
-    assert "v2.0.0-alpha0" in page and "First preview tagged" in page
-    assert "Next milestone" in page and "alpha1" in page
+    assert "Latest pre-release" in page and "the testing channel - 3 Oct 2026" in page
+    assert '<span class="chan pre">v2.0.0-alpha1</span>' in page
     # the next milestone is not reached yet: the amber ring, no pill colour
     assert '<span class="dot next"></span><span class="k">Next milestone' in page
-    assert '<span class="dot"></span><span class="k">First preview tagged' in page
+    assert '<span class="chan">alpha2</span>' in page
+    assert '<span class="dot"></span><span class="k">Latest pre-release' in page
     assert "last one 30 Sep 2026" in page and '<span class="chan dev">running</span>' in page
     assert '<a class="big" href="/repository/">Download early builds</a>' in page
     assert 'href="https://ko-fi.com/autobleem"' in page and 'rel="noopener"' in page
@@ -52,10 +57,25 @@ def test_splash_nightly_row_is_paused_without_a_nightly_and_uses_the_newest_with
     assert "last one 1 Oct 2026" in page
 
 
-def test_splash_status_comes_from_the_list(monkeypatch):
+def test_splash_status_takes_extra_rows_from_the_list(monkeypatch):
     monkeypatch.setattr(repo_index, "SPLASH_STATUS", [("Beta", "soon", "pre", "v9")])
     page = repo_index.render_splash(BASE_URL, [])
-    assert "Beta" in page and "v9" in page and "First preview tagged" not in page
+    assert "Beta" in page and "v9" in page
+
+
+def test_splash_release_rows_follow_the_releases():
+    rows = repo_index.splash_release_rows
+    # nothing released yet: the first pre-release is the milestone
+    assert rows([]) == [("First pre-release", "in progress", "", "alpha1")]
+    # a newer pre-release: the release, the pre-release and the milestone after it
+    got = rows([release("v2.0.0-beta1", "2026-11-02"), release("v2.0.0", "2026-12-01"), release("v2.1.0-rc2")])
+    assert [(r[0], r[3]) for r in got] == [("Latest release", "v2.0.0"), ("Latest pre-release", "v2.1.0-rc2"),
+                                           ("Next milestone", "rc3")]
+    assert got[0][1] == "the release channel - 1 Dec 2026" and got[0][2] == "rel"
+    # a pre-release older than the stable one is not shown
+    assert [r[3] for r in rows([release("v2.0.0-rc1"), release("v2.0.0")])] == ["v2.0.0"]
+    assert repo_index.next_milestone("v2.0.0-alpha9") == "alpha10"
+    assert repo_index.next_milestone("v2.0.0") is None
 
 
 def test_moved_stub_refreshes_and_links_to_the_repository_copy():

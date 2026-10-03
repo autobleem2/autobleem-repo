@@ -60,15 +60,13 @@ import sys
 from datetime import datetime, timezone
 
 # bump on every change: tools/repo_publish.sh only replaces the copy the repository runs with a newer one
-INDEX_VERSION = 45
+INDEX_VERSION = 46
 
-# the splash page's "Where we are" block (the owner edits it): (label, small note, pill class, pill text).
-# A row with an empty pill class is not reached yet and gets the amber ring instead of the green dot. The
-# nightly row is added under these by render_splash from index_nightly's newest build.
-SPLASH_STATUS = [
-    ("First preview tagged", "the first build with a version number", "pre", "v2.0.0-alpha0"),
-    ("Next milestone", "in progress", "", "alpha1"),
-]
+# the splash page's "Where we are" block updates itself (2026-10-03, the owner): the release rows come from
+# index_releases (splash_release_rows: the newest stable release, the newer pre-release, the next milestone) and
+# the nightly row from index_nightly's newest build. SPLASH_STATUS is for extra rows by hand, shown after the
+# release rows: (label, small note, pill class, pill text); an empty pill class = not reached yet (amber ring).
+SPLASH_STATUS = []
 # the page icon: /assets/icon.png is cached for a day under one URL, so the link carries the icon's content hash
 # (the first 8 hex digits of its sha1 - tests/test_site_pages.py checks it against tools/site-assets/icon.png;
 # change both when the icon changes); /favicon.ico is what a browser asks for by itself (publish copies it there)
@@ -2249,18 +2247,50 @@ def splash_nightly_row(nightly):
     build = next((b for b in reversed(nightly or []) if b.get("files")), None) or (nightly[-1] if nightly else None)
     if not build:
         return ("Nightly builds", "every change, built overnight - none at the moment", "", "paused")
-    day = datetime.strptime(build["date"][:10], "%Y-%m-%d")
-    months = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
-    return ("Nightly builds", "every change, built overnight - last one %d %s %d" % (day.day, months[day.month - 1], day.year),
+    return ("Nightly builds", "every change, built overnight - last one %s" % splash_day(build["date"]),
             "dev", "running")
 
 
-def render_splash(base_url, nightly=None):
-    """index.html: the splash - the logo, "AutoBleem 2 is coming", the status block (SPLASH_STATUS and the nightly
-    row), the Download button (-> /repository/), a thank-you and the Ko-fi button (KOFI_URL, left out when empty)."""
+def splash_day(date):
+    day = datetime.strptime(date[:10], "%Y-%m-%d")
+    months = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+    return "%d %s %d" % (day.day, months[day.month - 1], day.year)
+
+
+def next_milestone(version):
+    """v2.0.0-alpha1 -> alpha2, v2.0.0-rc2 -> rc3; a stable or unreadable version -> None"""
+    m = re.match(r"^v?\d+\.\d+(?:\.\d+)?-(alpha|beta|rc)(\d+)$", version)
+    return "%s%d" % (m.group(1), int(m.group(2)) + 1) if m else None
+
+
+def splash_release_rows(releases):
+    """the splash's release rows from index_releases: the newest stable release (release channel), the
+    pre-release when it is newer (testing channel) and the next milestone after it (amber, in progress)"""
+    releases = sorted(releases or [], key=lambda r: version_key(r["version"]))
+    stable = [r for r in releases if not r["prerelease"]]
+    pre = [r for r in releases if r["prerelease"]]
+    rows = []
+    if stable:
+        r = stable[-1]
+        rows.append(("Latest release", "the release channel - %s" % splash_day(r["date"]), "rel", r["version"]))
+    if pre and (not stable or version_key(pre[-1]["version"]) > version_key(stable[-1]["version"])):
+        r = pre[-1]
+        rows.append(("Latest pre-release", "the testing channel - %s" % splash_day(r["date"]), "pre", r["version"]))
+        nxt = next_milestone(r["version"])
+        if nxt:
+            rows.append(("Next milestone", "in progress", "", nxt))
+    if not rows:
+        rows.append(("First pre-release", "in progress", "", "alpha1"))
+    return rows
+
+
+def render_splash(base_url, nightly=None, releases=None):
+    """index.html: the splash - the logo, "AutoBleem 2 is coming", the status block (the release rows from
+    `releases`, SPLASH_STATUS and the nightly row), the Download button (-> /repository/), a thank-you and the
+    Ko-fi button (KOFI_URL, left out when empty)."""
     e = html.escape
     rows = []
-    for label, note, cls, pill in list(SPLASH_STATUS) + [splash_nightly_row(nightly)]:
+    for label, note, cls, pill in splash_release_rows(releases) + list(SPLASH_STATUS) + [splash_nightly_row(nightly)]:
         rows.append("<li><span class=\"dot%s\"></span><span class=\"k\">%s<small>%s</small></span>"
                     "<span class=\"chan%s\">%s</span></li>"
                     % ("" if cls else " next", e(label), e(note), " " + cls if cls else "", e(pill)))
@@ -2347,7 +2377,7 @@ def main():
     pcsx = {name: b for name, b in pcsx.items() if b}
     pc = {"builds": pc_builds, "cores": pc_cores, "images": pc_images, "win": win}
     os.makedirs(os.path.join(repo, "repository"), exist_ok=True)
-    pages = [("index.html", render_splash(base_url, nightly)),
+    pages = [("index.html", render_splash(base_url, nightly, releases)),
              (os.path.join("repository", "index.html"),
               render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc_cores, samples,
                            psc_libs, psc_apps, psc_bios, pc, pcsx, manuals, psc_kernel, nightly, store_pages,
