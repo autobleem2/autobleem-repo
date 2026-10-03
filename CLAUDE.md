@@ -17,7 +17,10 @@ the old `/rpi-install.html` and `/pc-install.html` are small refresh + link stub
 stays at `/store/`. The **data paths do not move** (`releases/`, `nightly/`, `store/`, `extensions/`, `emu/`,
 `pc/`, `psc/`, `rpi/`, `db/`, `manuals/`, `mirror/`, `rpi-imager/`, `samples/`): every updater, installer and
 the Store read JSON there. The brand goes to `/`; "Downloads", "Manual" and "<- Downloads" go to `/repository/`.
-Caddy's `@volatile` (max-age=300) lists `/`, `/index.html`, `/repository/` and `/repository/index.html`.
+Caddy's `@volatile` (max-age=300) covers whatever is replaced under the same name - `*.json`, every `*.html`,
+every folder listing (`*/`), `/manuals/*` and `/testplans/*`; everything else (the versioned folders) is
+max-age=86400. A new kind of file that is replaced in place goes into `@volatile` too (2026-10-03: a day's
+cache showed the old manuals).
 **Order of a publish that changes the look:** `repo_publish.sh assets` first (the pages' CSS needs the new fonts
 and logos), then the page.
 
