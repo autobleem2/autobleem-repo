@@ -39,6 +39,10 @@ Reads what is there (CLAUDE.md, "The download repository", has the layout) and w
     repository/pc-install.html         the PC USB stick's manual: what it runs on, writing the stick, the setup
     rpi-install.html, pc-install.html  stubs that send an old link on to repository/
     store/index.html                   what the AutoBleem Store offers
+    testplans/index.json               the volunteer test plans (testplans/<version>/<platform>.yaml, published from the hub):
+                                       the current version and its platforms - the contract is intake/README.md
+    testing/*.html                     the volunteer tester pages made from them: index, one task page per platform,
+                                       report, thanks, status (none without testplans/)
 
 Every file's sha256 comes from its `<name>.sha256` sidecar (sha256sum format) when there is one, else it
 is computed and the sidecar written.
@@ -60,7 +64,7 @@ import sys
 from datetime import datetime, timezone
 
 # bump on every change: tools/repo_publish.sh only replaces the copy the repository runs with a newer one
-INDEX_VERSION = 46
+INDEX_VERSION = 47
 
 # the splash page's "Where we are" block updates itself (2026-10-03, the owner): the release rows come from
 # index_releases (splash_release_rows: the newest stable release, the newer pre-release, the next milestone) and
@@ -1491,21 +1495,21 @@ a.support:hover img{opacity:0}
 """
 
 
-def page_head(title, tagline):
+def page_head(title, tagline, extra_css=""):
     """The top of every inner page: the document head, a slim bar with the emblem and the links, and a short
     banner - the page's line on the left, the C3 logo on the right - so the first screen shows what to download.
     The brand goes to the splash (/), the downloads and the manual to /repository/."""
     e = html.escape
     return ("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-            "<title>%s</title>%s<style>%s</style>%s</head><body>"
+            "<title>%s</title>%s<style>%s%s</style>%s</head><body>"
             "<header class=\"top\"><div class=\"bar\"><a class=\"brand\" href=\"/\"><img src=\"/assets/emblem.png\" "
             "srcset=\"/assets/emblem@2x.png 2x\" alt=\"\">AutoBleem 2 <span>Downloads</span></a><nav>"
             "<a href=\"/store/\">Store</a><a href=\"/repository/#manuals\">Manual</a><a href=\"/releases/\">All files</a>"
             "<a href=\"https://github.com/autobleem2\">GitHub</a></nav></div></header>"
             "<div class=\"hero\"><div class=\"in\"><p>%s</p><img src=\"/assets/logo.png\" "
             "srcset=\"/assets/logo@2x.png 2x\" alt=\"AutoBleem 2\"></div></div>"
-            % (e(title), ICON_LINKS, PAGE_CSS, COPY_SCRIPT, e(tagline)))
+            % (e(title), ICON_LINKS, PAGE_CSS, extra_css, COPY_SCRIPT, e(tagline)))
 
 
 # the Copy buttons (imager_notice): the clipboard API on the https site, a hidden textarea where it is missing
@@ -2330,6 +2334,567 @@ def render_splash(base_url, nightly=None, releases=None):
             "</body></html>\n" % (base_url, ICON_LINKS, PAGE_CSS, "\n      ".join(rows), support))
 
 
+#*******************************
+# the volunteer tester pages (testing/) and the test plans they are made from (testplans/)
+#*******************************
+# The plans arrive in testplans/<version>/<platform>.yaml (the hub's CI, repo_publish.sh testplans). The contract with
+# the intake service and the admin panel is intake/README.md. No testplans/ folder = no pages and no error.
+PLAN_PLATFORMS = ("psc", "rpi", "pcusb", "win")
+PLAN_ID_RE = re.compile(r"^[a-z0-9]+$")
+
+
+def _yaml_scalar(text):
+    """One YAML scalar of the plan files' subset: a double or single quoted string, a number or a plain word."""
+    text = text.strip()
+    if text[:1] == "\"":
+        i = 1
+        while i < len(text):
+            if text[i] == "\\":
+                i += 2
+                continue
+            if text[i] == "\"":
+                break
+            i += 1
+        try:
+            return json.loads(text[:i + 1])
+        except ValueError:
+            return text[1:i]
+    if text[:1] == "'":
+        out, i = [], 1
+        while i < len(text):
+            if text[i] == "'":
+                if text[i + 1:i + 2] == "'":
+                    out.append("'")
+                    i += 2
+                    continue
+                break
+            out.append(text[i])
+            i += 1
+        return "".join(out)
+    text = re.sub(r"\s+#.*$", "", text)
+    if text == "[]":
+        return []
+    if re.match(r"^-?\d+$", text):
+        return int(text)
+    return text
+
+
+YAML_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*):(?:\s+(.*))?$")
+
+
+def _yaml_block(lines, i, indent):
+    """The block that starts at lines[i] (all its lines at `indent`): a list or a map -> (value, next line)."""
+    if lines[i][1] == "-" or lines[i][1].startswith("- "):
+        items = []
+        while i < len(lines) and lines[i][0] == indent and (lines[i][1] == "-" or lines[i][1].startswith("- ")):
+            rest = lines[i][1][1:]
+            item = rest.strip()
+            if not item:
+                if i + 1 < len(lines) and lines[i + 1][0] > indent:
+                    value, i = _yaml_block(lines, i + 1, lines[i + 1][0])
+                else:
+                    value, i = None, i + 1
+            elif YAML_KEY_RE.match(item):
+                sub = indent + 1 + (len(rest) - len(rest.lstrip()))
+                lines[i] = (sub, item)
+                value, i = _yaml_block(lines, i, sub)
+            else:
+                value, i = _yaml_scalar(item), i + 1
+            items.append(value)
+        return items, i
+    mapping = {}
+    while i < len(lines) and lines[i][0] == indent:
+        m = YAML_KEY_RE.match(lines[i][1])
+        if not m:
+            raise ValueError("not a 'key: value' line: %s" % lines[i][1])
+        key, rest = m.group(1), m.group(2)
+        if rest is None or rest.strip() == "" or rest.strip().startswith("#"):
+            nxt = lines[i + 1] if i + 1 < len(lines) else None
+            if nxt and (nxt[0] > indent or (nxt[0] == indent and nxt[1].startswith("- "))):
+                mapping[key], i = _yaml_block(lines, i + 1, nxt[0])
+            else:
+                mapping[key], i = None, i + 1
+        else:
+            mapping[key], i = _yaml_scalar(rest), i + 1
+    return mapping, i
+
+
+def parse_plan_yaml(text):
+    """The subset of YAML the test plans use (maps, lists, quoted or plain scalars, # comment lines) - the server
+    has only the standard library, so no PyYAML."""
+    lines = [(len(raw) - len(raw.lstrip(" ")), raw.strip()) for raw in text.splitlines()
+             if raw.strip() and not raw.lstrip().startswith("#")]
+    if not lines:
+        return {}
+    value, _ = _yaml_block(lines, 0, lines[0][0])
+    return value
+
+
+def load_plan(path):
+    """A plan file as the pages need it, or None (a warning on stderr) when it is not a usable plan."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = parse_plan_yaml(f.read())
+        sections = []
+        for s in raw["sections"]:
+            steps = [{"id": str(st["id"]), "do": str(st["do"]), "expect": str(st.get("expect") or "")}
+                     for st in s["steps"]]
+            if not steps:
+                raise ValueError("section %s has no steps" % s["id"])
+            sections.append({"id": str(s["id"]), "title": str(s["title"]), "minutes": int(s.get("minutes") or 0),
+                             "needs": str(s.get("needs") or ""), "steps": steps})
+        if not sections:
+            raise ValueError("no sections")
+        before = raw.get("before_you_start") or []
+        return {"id": str(raw["id"]), "title": str(raw["title"]), "version": str(raw.get("version") or ""),
+                "before_you_start": [str(b) for b in before], "sections": sections}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        print("testplans: %s skipped - %s: %s" % (path, type(e).__name__, e), file=sys.stderr)
+        return None
+
+
+def index_testplans(repo):
+    """testplans/<version>/<platform>.yaml -> testplans/index.json (the contract: intake/README.md) and what the
+    pages need: {"current", "versions", "plans": {platform: plan}, "pdf": {platform: url path}}; None without any
+    plan. The current version is the highest folder by version_key."""
+    root = os.path.join(repo, "testplans")
+    if not os.path.isdir(root):
+        return None
+    found = {}
+    for version in os.listdir(root):
+        folder = os.path.join(root, version)
+        if not os.path.isdir(folder):
+            continue
+        for name in sorted(os.listdir(folder)):
+            m = re.match(r"^([a-z0-9]+)\.yaml$", name)
+            plan = load_plan(os.path.join(folder, name)) if m else None
+            if plan:
+                found.setdefault(version, {})[m.group(1)] = plan
+    if not found:
+        return None
+    versions = sorted(found, key=version_key)
+    current = versions[-1]
+    order = [p for p in PLAN_PLATFORMS if p in found[current]] + sorted(p for p in found[current] if p not in PLAN_PLATFORMS)
+    plans = {p: found[current][p] for p in order}
+    write_json(os.path.join(root, "index.json"), {
+        "current": current, "versions": versions[::-1],
+        "platforms": {p: {"title": plan["title"], "sections": len(plan["sections"]),
+                          "minutes": sum(s["minutes"] for s in plan["sections"])} for p, plan in plans.items()}})
+    pdf = {p: "/testplans/%s/%s.pdf" % (current, p) for p in plans
+           if os.path.isfile(os.path.join(root, current, p + ".pdf"))}
+    print("testplans: %s, %d versions, platforms %s" % (current, len(versions), ", ".join(plans)))
+    return {"current": current, "versions": versions[::-1], "plans": plans, "pdf": pdf}
+
+
+TESTING_CSS = """
+/* NEW - the Testing pages: forms, step rows, platform cards. Same tokens and cut corners as the approved look. */
+header.top nav a.on{color:var(--cyan)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:1rem;margin:1rem 0}
+.grid .panel{margin:0;display:flex;flex-direction:column}
+.grid .panel p{color:var(--dim);font-size:.92rem;flex:1}
+.grid .panel h3{margin-top:0;color:#fff;font-size:1.05rem}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.two .panel{margin:1rem 0}
+.cta{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;margin:1.2rem 0}
+button.big,a.big.plain{display:inline-flex;align-items:center;gap:.7rem;padding:.8rem 1.8rem;font:inherit;font-size:1.05rem;
+  font-weight:600;color:#fff;letter-spacing:.02em;border:0;cursor:pointer;position:relative;
+  background:linear-gradient(180deg,#ff5cb6,#d9358f);--ring:rgba(255,255,255,.25);--cut:14px;
+  clip-path:polygon(0 0,calc(100% - var(--cut)) 0,100% var(--cut),100% 100%,var(--cut) 100%,0 calc(100% - var(--cut)))}
+button.big:after{content:"";position:absolute;inset:0;pointer-events:none;background:var(--ring);
+  clip-path:polygon(evenodd,0 0,calc(100% - var(--cut)) 0,100% var(--cut),100% 100%,var(--cut) 100%,0 calc(100% - var(--cut)),0 0,
+    1px 1px,calc(100% - 1px - var(--cut) + .59px) 1px,calc(100% - 1px) calc(1px + var(--cut) - .59px),calc(100% - 1px) calc(100% - 1px),
+    calc(1px + var(--cut) - .59px) calc(100% - 1px),1px calc(100% - 1px - var(--cut) + .59px),1px 1px)}
+button.big:hover,a.big.plain:hover{background:linear-gradient(180deg,#ff73c1,#e8409c);text-decoration:none}
+a.big.plain:before{content:none}
+a.dl.wide{margin-top:.4rem;align-self:flex-start}
+a.dl.quiet{--ring:var(--line-soft);color:var(--steel);background:rgba(18,22,28,.6)}
+label.f{display:block;margin:1rem 0 .3rem;font-weight:600;color:var(--steel);font-size:.9rem}
+label.f small{font-weight:500;color:var(--dim);margin-left:.4rem}
+input[type=text],input[type=email],select,textarea,input[type=file]{width:100%;font:inherit;font-size:.95rem;color:var(--ink);
+  background:rgba(18,22,28,.78);border:1px solid var(--line);border-radius:0;padding:.5rem .65rem}
+textarea{min-height:5.5rem;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--magenta)}
+input::placeholder,textarea::placeholder{color:#6f7d8b}
+.hint{color:var(--dim);font-size:.85rem;margin:.25rem 0 0}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1rem}
+.hp{position:absolute;left:-9999px;height:0;overflow:hidden}
+.check{display:flex;gap:.6rem;align-items:flex-start;margin:.8rem 0;color:var(--ink);font-size:.92rem}
+.check input{margin-top:.25rem;accent-color:var(--magenta)}
+.privacy{color:var(--dim);font-size:.85rem;border-left:3px solid var(--cyan);padding:.1rem 0 .1rem .8rem;margin:1rem 0}
+.sec{display:flex;flex-wrap:wrap;align-items:baseline;gap:.8rem;margin:1.8rem 0 .2rem;padding-bottom:.3rem;border-bottom:1px solid var(--line)}
+.sec h2{margin:0;color:#fff;font-size:1.1rem;text-transform:none;letter-spacing:.02em}
+.sec small{color:var(--dim)}
+.step{padding:.8rem 0;border-bottom:1px solid var(--line-soft)}
+.step:last-child{border-bottom:0}
+.step .top{display:flex;gap:.8rem;align-items:flex-start}
+.step .sid{flex:none;font-family:ui-monospace,Consolas,monospace;font-size:.78rem;color:var(--dim);background:rgba(0,0,0,.28);
+  padding:.1rem .4rem;margin-top:.15rem}
+.step .txt{flex:1;min-width:0}
+.step .txt b{font-weight:600;color:#fff}
+.step .txt small{display:block;color:var(--dim);font-size:.85rem;margin-top:.15rem}
+.choice{display:flex;gap:.4rem;margin:.55rem 0 0 0;flex-wrap:wrap}
+.choice label{cursor:pointer}
+.choice input{position:absolute;opacity:0;pointer-events:none}
+.choice span{display:inline-block;padding:.2rem .9rem;font-size:.86rem;font-weight:600;color:var(--steel);
+  background:rgba(18,22,28,.6);border:1px solid var(--line-soft)}
+.choice input:focus-visible+span{border-color:var(--magenta)}
+.choice input:checked+span.ok{color:var(--rel);border-color:var(--rel);background:rgba(88,224,160,.1)}
+.choice input:checked+span.pr{color:var(--warn);border-color:var(--warn);background:rgba(255,138,101,.12)}
+.choice input:checked+span.na{color:#fff;border-color:var(--dim);background:rgba(154,168,182,.14)}
+.cmt{display:none;margin-top:.5rem}
+.step:has(input[value=problem]:checked) .cmt{display:block}
+.cmt textarea{min-height:3.4rem}
+.progress{position:sticky;top:3.3rem;z-index:3;background:rgba(18,22,28,.92);border-bottom:1px solid var(--line-soft);
+  padding:.4rem 0;margin:0 0 .4rem;display:flex;align-items:center;gap:.8rem;font-size:.85rem;color:var(--dim)}
+.progress .bar{flex:1;height:4px;background:var(--line-soft);position:relative}
+.progress .bar i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--cyan),var(--magenta))}
+.idrow{display:flex;gap:1rem;align-items:center}
+.idrow input{max-width:15rem;font-family:ui-monospace,Consolas,monospace;font-size:1.2rem;letter-spacing:.15em}
+.stat{margin:.2rem 0 1rem}
+ol.stages{list-style:none;margin:0 0 1rem;padding:0 0 0 .4rem}
+ol.stages li{position:relative;margin:0;padding:.2rem 0 1rem 1.6rem;border-left:2px solid var(--line-soft)}
+ol.stages li:last-child{padding-bottom:.2rem}
+ol.stages li:before{content:"";position:absolute;left:-7px;top:.45rem;width:12px;height:12px;border-radius:50%;background:var(--bg);border:2px solid var(--dim)}
+ol.stages li.done:before{background:var(--rel);border-color:var(--rel)}
+ol.stages li.now:before{background:var(--magenta);border-color:var(--magenta);box-shadow:0 0 8px var(--magenta)}
+ol.stages li b{color:#fff;font-weight:600}
+ol.stages li small{display:block;color:var(--dim);font-size:.85rem}
+.sub{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;margin:1.2rem 0}
+.idbox{display:inline-block;font-family:ui-monospace,Consolas,monospace;font-size:1.8rem;letter-spacing:.2em;color:#fff;
+  background:rgba(0,0,0,.35);border:1px solid var(--line);padding:.4rem 1.1rem;margin:.4rem 0}
+ol.next li{margin:.5rem 0}ol.next b{color:#fff;font-weight:600}
+@media (max-width:640px){
+  .two,.row2{grid-template-columns:minmax(0,1fr)}
+  .step .top{flex-direction:column;gap:.3rem}
+  .progress{top:2.9rem}
+  .idbox{font-size:1.3rem;letter-spacing:.12em}
+  header.top nav a.xs{display:none}
+}
+
+.err{color:var(--warn);margin:.6rem 0}
+.step.bad{border-left:3px solid var(--warn);padding-left:.6rem}
+.step.prob .cmt{display:block}
+.hidden{display:none}
+"""
+
+TESTING_PRIVACY = ("What you send is stored on the project's server, read only by the project's maintainers, and used "
+                   "to fix problems and plan the next release. Contact details are optional and used only to ask "
+                   "about your report. Logs are kept only to investigate the report.")
+
+# the small script every Testing page shares: el() builds a node with text only (never innerHTML - the plan's
+# texts are data, not markup), api() posts JSON and turns an {"error": ...} answer into an exception
+TESTING_JS = """
+function $(id){return document.getElementById(id)}
+function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+function readJson(r){return r.json().catch(function(){return {}}).then(function(j){
+  if(!r.ok||j.error)throw new Error(j.error||('The server answered '+r.status));return j})}
+function api(path,body){return fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify(body)}).then(readJson)}
+function qs(name){var m=location.search.match(new RegExp('[?&]'+name+'=([^&]*)'));
+  try{return m?decodeURIComponent(m[1]):''}catch(e){return ''}}
+"""
+
+TASK_JS = """
+(function(){
+var D=JSON.parse($('plan-data').textContent),P=D.platform,V=D.version,KEY='abtp:'+P+':'+V,S={};
+function load(){try{return JSON.parse(localStorage.getItem(KEY))||{}}catch(e){return {}}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function forget(){try{localStorage.removeItem(KEY)}catch(e){}}
+function showError(msg,retry){var box=$('task');box.textContent='';box.appendChild(el('p','err',msg));
+  if(retry){var b=el('button','copy','Try again');b.type='button';b.onclick=start;box.appendChild(b)}}
+function start(){
+  S=load();$('task').textContent='Looking for a task for you...';
+  var body={platform:P,version:V};if(S.claim)body.claim=S.claim;
+  api('/submit/claim',body).then(function(c){
+    if(S.claim!==c.claim){var keep=S.section===c.section.id&&S.answers;
+      S={claim:c.claim,answers:keep?S.answers:{},device:S.device||'',contact:S.contact||''}}
+    S.section=c.section.id;S.expires=c.expires||'';save();render()
+  }).catch(function(e){showError('Could not get a task: '+e.message,true)})}
+function section(){for(var i=0;i<D.sections.length;i++)if(D.sections[i].id===S.section)return D.sections[i];return null}
+function counts(sec){var n=0;sec.steps.forEach(function(st){if(S.answers[st.id]&&S.answers[st.id].status)n++});return n}
+function progress(sec){var n=counts(sec),t=sec.steps.length;
+  $('pcount').textContent=n+' of '+t+' answered';$('pbar').style.width=Math.round(100*n/t)+'%'}
+function render(){
+  var sec=section(),box=$('task');
+  if(!sec){forget();showError('This task is not in the plan any more.',true);return}
+  box.textContent='';
+  var note=el('div','notice'),label=el('span','label');
+  label.appendChild(el('b',null,'Task claimed for you'));
+  var when=S.expires?new Date(S.expires):null;
+  label.appendChild(document.createTextNode(' - '+D.title+', '+sec.title+(sec.minutes?' (about '+sec.minutes+' min)':'')+
+    (when&&!isNaN(when)?'. Send it by '+when.toLocaleDateString()+' or it goes back to the pool.':'.')));
+  note.appendChild(label);box.appendChild(note);
+  var form=el('form');form.noValidate=true;
+  var panel=el('div','panel'),row=el('div','row2'),a=el('div'),b=el('div');
+  var la=el('label','f','Your device ');la.appendChild(el('small',null,'optional'));a.appendChild(la);
+  var dev=el('input');dev.type='text';dev.maxLength=200;dev.placeholder='e.g. PlayStation Classic, EU model, 8 GB stick';
+  dev.value=S.device||'';dev.oninput=function(){S.device=dev.value;save()};a.appendChild(dev);
+  var lb=el('label','f','Contact ');lb.appendChild(el('small',null,'optional - only used to ask about your answers'));b.appendChild(lb);
+  var ct=el('input');ct.type='email';ct.maxLength=200;ct.placeholder='e-mail';ct.value=S.contact||'';
+  ct.oninput=function(){S.contact=ct.value;save()};b.appendChild(ct);
+  row.appendChild(a);row.appendChild(b);panel.appendChild(row);
+  var hp=el('div','hp'),hl=el('label',null,'Leave this empty '),hi=el('input');hi.type='text';hi.name='website';hi.tabIndex=-1;
+  hi.autocomplete='off';hl.appendChild(hi);hp.appendChild(hl);panel.appendChild(hp);form.appendChild(panel);
+  var pr=el('div','progress');pr.appendChild(el('span')).id='pcount';
+  var bar=el('span','bar');bar.appendChild(el('i')).id='pbar';pr.appendChild(bar);
+  pr.appendChild(el('span',null,sec.minutes?'about '+sec.minutes+' min':''));form.appendChild(pr);
+  var head=el('div','sec');head.appendChild(el('h2',null,sec.title));
+  if(sec.needs)head.appendChild(el('small',null,'You need: '+sec.needs));form.appendChild(head);
+  sec.steps.forEach(function(st){
+    var cur=S.answers[st.id]||{},d=el('div','step');d.id='s-'+st.id;
+    var top=el('div','top');top.appendChild(el('span','sid',st.id));
+    var txt=el('div','txt');txt.appendChild(el('b',null,st.do));
+    if(st.expect)txt.appendChild(el('small',null,'You should see: '+st.expect));
+    var ch=el('div','choice'),cmt=el('div','cmt'),ta=el('textarea');ta.maxLength=2000;
+    ta.placeholder='What happened instead? (a few words are enough)';ta.value=cur.comment||'';
+    function mark(){d.classList.toggle('prob',(S.answers[st.id]||{}).status==='problem')}
+    [['ok','ok','OK'],['problem','pr','Problem'],['na','na','Not applicable']].forEach(function(o){
+      var l=el('label'),r=el('input');r.type='radio';r.name=st.id;r.value=o[0];r.checked=cur.status===o[0];
+      r.onchange=function(){var x=S.answers[st.id]||(S.answers[st.id]={});x.status=o[0];d.classList.remove('bad');
+        mark();save();progress(sec)};
+      l.appendChild(r);l.appendChild(el('span',o[1],o[2]));ch.appendChild(l)});
+    ta.oninput=function(){var x=S.answers[st.id]||(S.answers[st.id]={});x.comment=ta.value;d.classList.remove('bad');save()};
+    cmt.appendChild(ta);txt.appendChild(ch);txt.appendChild(cmt);top.appendChild(txt);d.appendChild(top);
+    form.appendChild(d);mark()});
+  form.appendChild(el('p','privacy',D.privacy));
+  var err=el('p','err hidden');form.appendChild(err);
+  var sub=el('div','sub'),send=el('button','big','Send my results');send.type='submit';
+  var back=el('button','dl quiet','Give it back');back.type='button';sub.appendChild(send);sub.appendChild(back);
+  form.appendChild(sub);box.appendChild(form);progress(sec);
+  function fail(msg){err.textContent=msg;err.classList.remove('hidden')}
+  back.onclick=function(){back.disabled=true;
+    api('/submit/claim',{platform:P,version:V,claim:S.claim,release:true}).catch(function(){}).then(function(){
+      forget();location.href='/testing/'})};
+  form.onsubmit=function(ev){ev.preventDefault();err.classList.add('hidden');
+    var steps=[],bad=null;
+    sec.steps.forEach(function(st){var x=S.answers[st.id]||{},d=$('s-'+st.id);
+      var comment=(x.comment||'').trim();
+      if(!x.status||(x.status==='problem'&&!comment)){d.classList.add('bad');if(!bad)bad=d}
+      steps.push({id:st.id,status:x.status||'',comment:x.status==='problem'?comment:''})});
+    if(bad){fail('Please answer every step - use Not applicable for one you could not try - and say what happened on each Problem.');
+      bad.scrollIntoView({block:'center'});return}
+    send.disabled=true;
+    api('/submit/testplan',{platform:P,version:V,section:S.section,claim:S.claim,steps:steps,
+      device:(S.device||'').trim(),contact:(S.contact||'').trim(),website:hi.value}).then(function(r){
+      forget();location.href='/testing/thanks.html?id='+encodeURIComponent(r.id)+'&p='+encodeURIComponent(P)
+    }).catch(function(e){send.disabled=false;fail('Could not send: '+e.message)})}
+}
+start();
+})();
+"""
+
+COVERAGE_JS = """
+(function(){
+var g=$('cards');
+fetch('/submit/coverage?version='+encodeURIComponent(g.dataset.version)).then(function(r){return r.ok?r.json():null})
+.then(function(j){if(!j||!j.platforms)return;
+  Array.prototype.forEach.call(document.querySelectorAll('.cov'),function(e){
+    var c=j.platforms[e.dataset.p];if(!c||!c.section)return;
+    e.textContent='Most needed now: ';e.appendChild(el('b',null,c.section.title));
+    e.lastChild.style.color='var(--ink)';
+    e.appendChild(document.createTextNode(' - '+c.passes+(j.target?' of '+j.target:'')+' done'))})
+}).catch(function(){})})();
+"""
+
+REPORT_JS = """
+(function(){
+var f=$('f'),pl=$('pl'),v=$('v'),vo=$('vo'),lg=$('lg'),err=$('err');
+v.onchange=function(){vo.classList.toggle('hidden',v.value!=='')};
+function fail(m){err.textContent=m;err.classList.remove('hidden')}
+f.onsubmit=function(ev){ev.preventDefault();err.classList.add('hidden');
+  var ver=v.value||vo.value.trim(),file=lg.files&&lg.files[0];
+  if(!pl.value)return fail('Please pick your device.');
+  if(!ver)return fail('Please give the version, or write "not sure".');
+  if(!$('st').value.trim()&&!$('ac').value.trim())return fail('Please tell us what you did or what happened.');
+  if(file){
+    if(!/\\.zip$/i.test(file.name))return fail('The log file must be a .zip.');
+    if(file.size>25*1024*1024)return fail('The log file is larger than 25 MB.');
+    if(!$('cb').checked)return fail('Tick the box to agree to send the logs, or remove the file.')}
+  var fd=new FormData();fd.append('platform',pl.value);fd.append('version',ver);fd.append('steps',$('st').value);
+  fd.append('expected',$('ex').value);fd.append('actual',$('ac').value);fd.append('contact',$('ct').value.trim());
+  fd.append('website',$('hp').value);
+  if(file){fd.append('logs',file);fd.append('consent_logs','on')}
+  var send=$('send');send.disabled=true;
+  fetch('/submit/issue',{method:'POST',body:fd}).then(readJson).then(function(r){
+    location.href='/testing/thanks.html?id='+encodeURIComponent(r.id)
+  }).catch(function(e){send.disabled=false;fail('Could not send: '+e.message)})}
+})();
+"""
+
+THANKS_JS = """
+(function(){
+var id=qs('id'),p=qs('p');
+if(/^[a-z0-9]{1,16}$/.test(id)){$('rid').textContent=id;$('st').href='/testing/status.html?id='+id}
+else{$('rid').classList.add('hidden');$('st').classList.add('hidden')}
+if(/^[a-z0-9]+$/.test(p))$('again').href='/testing/'+p+'.html';
+})();
+"""
+
+STATUS_JS = """
+(function(){
+var LABELS={'received':['Received','','We have it and will read it. New reports are sorted once a day.'],
+ 'needs-info':['Needs more info','pre','Send a new report and put this id in the first line of "What did you do?".'],
+ 'to-reproduce':['We are trying to repeat it','','Only a problem we can repeat on the newest build becomes a bug.'],
+ 'not-a-bug':['Not a bug','','We looked at it and it is not something to fix.'],
+ 'idea':['Idea - kept for the next plan','dev','It is on the "User ideas" list and read when we plan the next release.']};
+function show(j){var out=$('out');out.textContent='';out.classList.remove('hidden');
+  var h=el('h2',null,j.id);h.appendChild(el('small',null,(j.kind==='testplan'?'test result':'problem report')+
+    (j.received?' - sent '+String(j.received).slice(0,10):'')));out.appendChild(h);
+  var st=String(j.state||''),m=/^bug (BUG-\\d+)$/.exec(st),l=m?['Recorded as '+m[1],'rel',
+    'It is on the list of things to fix. The next alpha will say if it is fixed.']:(LABELS[st]||[st,'','']);
+  var p=el('p','stat');p.appendChild(el('span','chan '+l[1],l[0]));out.appendChild(p);
+  if(l[2])out.appendChild(el('p','older',l[2]))}
+function look(id){var out=$('out'),err=$('err');err.classList.add('hidden');out.classList.add('hidden');
+  if(!/^[a-z0-9]{8}$/.test(id)){err.textContent='A report id is 8 letters and digits.';err.classList.remove('hidden');return}
+  fetch('/submit/status/'+id).then(readJson).then(show).catch(function(e){
+    err.textContent=e.message;err.classList.remove('hidden')})}
+$('f').onsubmit=function(ev){ev.preventDefault();look($('rid').value.trim().toLowerCase())};
+var q=qs('id');if(q){$('rid').value=q;look(q.toLowerCase())}
+})();
+"""
+
+
+def testing_page(title, tagline, body, script=""):
+    """A Testing page: the site's shared head and CSS plus the Testing pieces, the page's body, its script."""
+    return (page_head(title, tagline, TESTING_CSS) + "<main>" + body + "</main><footer>AutoBleem 2</footer>"
+            "<script>" + TESTING_JS + script + "</script></body></html>\n")
+
+
+def script_json(data):
+    """JSON for a <script type="application/json"> block: nothing in it can close the tag or start a comment."""
+    return (json.dumps(data, ensure_ascii=False).replace("&", "\\u0026").replace("<", "\\u003c")
+            .replace(">", "\\u003e").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+
+def render_testing_index(info):
+    e = html.escape
+    cards = []
+    for p, plan in info["plans"].items():
+        minutes = sum(s["minutes"] for s in plan["sections"])
+        pdf = ("<p class=\"older\" style=\"margin:.7rem 0 0;font-size:.82rem\"><a href=\"%s\">The whole plan as a "
+               "printable PDF</a></p>" % e(info["pdf"][p]) if p in info["pdf"] else "")
+        cards.append("<div class=\"panel\"><h3>%s</h3><p>%d sections in all, about %d minutes.</p>"
+                     "<p class=\"older cov\" data-p=\"%s\"></p><a class=\"dl wide\" href=\"/testing/%s.html\">"
+                     "Give me a task (~10 min)</a>%s</div>" % (e(plan["title"]), len(plan["sections"]), minutes, e(p), e(p), pdf))
+    body = (
+        "<p class=\"lede\"><b>Alpha testing</b> means trying an early build before everyone gets it, and telling us "
+        "what works and what does not. Anyone with one of the supported devices can join as a volunteer - no "
+        "experience needed, no login. You do not test everything: pick your device and we hand you <b>one small "
+        "task of about ten minutes</b>, the part that needs testing most. Take another one when you like.</p>"
+        "<div class=\"cta\"><a class=\"dl\" href=\"/repository/\">Go to the downloads</a><span class=\"older\">Pick your "
+        "device below - the plan's first lines say what to download. Testing %s.</span></div>"
+        "<h2 class=\"plat\" style=\"margin-top:1.6rem\">Pick your device</h2>"
+        "<div class=\"grid\" id=\"cards\" data-version=\"%s\">%s</div>"
+        "<p class=\"older\">Your task is kept for you in this browser for a while; if you do not send it by then it goes "
+        "back to the pool.</p>"
+        "<div class=\"panel\"><h2>Something went wrong?</h2><p>Tell us even if you are not following a plan. It takes "
+        "about five minutes, and a log file from the console helps a lot.</p><div class=\"cta\" style=\"margin:.6rem 0 0\">"
+        "<a class=\"big plain\" href=\"/testing/report.html\">Report a problem</a></div></div>"
+        "<div class=\"two\"><div class=\"panel\"><h2>What happens to your report</h2><p>Each report gets an id. We read "
+        "it, try to repeat it on the newest build, and only then call it a bug and fix it.</p><p><b>A bug</b> is "
+        "something that should work and does not. <b>An idea</b> is something you would like it to do - ideas are "
+        "welcome, they are kept on a \"User ideas\" list and read when we plan the next release.</p>"
+        "<p>You can look up your report by its id on the <a href=\"/testing/status.html\">status page</a>.</p></div>"
+        "<div class=\"panel\"><h2>Your data</h2><p class=\"older\">%s</p></div></div>"
+        % (e(info["current"]), e(info["current"]), "".join(cards), e(TESTING_PRIVACY)))
+    return testing_page("Testing - AutoBleem 2", "Help us test the alpha - on your own hardware.", body, COVERAGE_JS)
+
+
+def render_testing_task(info, platform):
+    e = html.escape
+    plan = info["plans"][platform]
+    data = {"platform": platform, "version": info["current"], "title": plan["title"], "privacy": TESTING_PRIVACY,
+            "sections": plan["sections"]}
+    before = ""
+    if plan["before_you_start"]:
+        before = ("<details class=\"inputs\"><summary><b>Before you start</b> what you need for this plan</summary>"
+                  "<div><ul>%s</ul></div></details>" % "".join("<li>%s</li>" % e(b) for b in plan["before_you_start"]))
+    pdf = ("<p class=\"older\">The whole plan for this device is also a <a href=\"%s\">printable PDF</a>.</p>"
+           % e(info["pdf"][platform]) if platform in info["pdf"] else "")
+    body = ("<p class=\"lede\"><a href=\"/testing/\">&larr; Testing</a> &nbsp; This is <b>one small task</b>, about ten "
+            "minutes. Answer each step - use Not applicable for one you could not try - and send it at the end. Your "
+            "answers stay in this browser if you close the page.</p>%s"
+            "<noscript><p class=\"err\">This page needs JavaScript to hand you a task.</p></noscript>"
+            "<div id=\"task\"></div>%s<script type=\"application/json\" id=\"plan-data\">%s</script>"
+            % (before, pdf, script_json(data)))
+    return testing_page("%s - testing - AutoBleem 2" % plan["title"], "Your task - %s." % plan["title"], body, TASK_JS)
+
+
+def render_testing_report(info):
+    e = html.escape
+    platforms = "".join("<option value=\"%s\">%s</option>" % (e(p), e(plan["title"])) for p, plan in info["plans"].items())
+    versions = "".join("<option value=\"%s\">%s</option>" % (e(v), e(v)) for v in info["versions"])
+    body = (
+        "<p class=\"lede\"><a href=\"/testing/\">&larr; Testing</a> &nbsp; Tell us what happened, in your own words. "
+        "<b>Ideas are welcome too</b> - write them here as well; they are kept on a \"User ideas\" list and read when "
+        "we plan the next release.</p>"
+        "<form id=\"f\" action=\"/submit/issue\" method=\"post\" enctype=\"multipart/form-data\" class=\"panel\" novalidate>"
+        "<div class=\"row2\"><div><label class=\"f\" for=\"pl\" style=\"margin-top:0\">Device</label>"
+        "<select id=\"pl\" name=\"platform\">%s</select></div>"
+        "<div><label class=\"f\" for=\"v\" style=\"margin-top:0\">Version</label>"
+        "<select id=\"v\" name=\"version\">%s<option value=\"\">Other / not sure</option></select>"
+        "<input type=\"text\" id=\"vo\" class=\"hidden\" maxlength=\"100\" placeholder=\"the version, or not sure\" "
+        "style=\"margin-top:.4rem\"><p class=\"hint\">Options, then About, shows it.</p></div></div>"
+        "<label class=\"f\" for=\"st\">What did you do? <small>step by step</small></label>"
+        "<textarea id=\"st\" name=\"steps\" maxlength=\"5000\" placeholder=\"1. Options, then Updates&#10;2. Chose nightly&#10;"
+        "3. Waited a minute\"></textarea>"
+        "<label class=\"f\" for=\"ex\">What did you expect to happen?</label><textarea id=\"ex\" name=\"expected\" "
+        "maxlength=\"5000\" style=\"min-height:3.6rem\"></textarea>"
+        "<label class=\"f\" for=\"ac\">What happened instead?</label><textarea id=\"ac\" name=\"actual\" maxlength=\"5000\" "
+        "style=\"min-height:3.6rem\"></textarea>"
+        "<label class=\"f\" for=\"lg\">Log files <small>optional - a .zip, up to 25 MB</small></label>"
+        "<input type=\"file\" id=\"lg\" name=\"logs\" accept=\".zip\">"
+        "<p class=\"hint\">On the console: Hardware Information, then \"Save logs\" writes a folder to the stick. Zip that "
+        "folder.</p>"
+        "<label class=\"check\"><input type=\"checkbox\" id=\"cb\" name=\"consent_logs\"><span>I agree to send these logs. "
+        "I know they can contain my Wi-Fi name, game names and device ids. <b>Required when a file is attached.</b>"
+        "</span></label>"
+        "<label class=\"f\" for=\"ct\">Contact <small>optional - only used to ask about this report</small></label>"
+        "<input type=\"email\" id=\"ct\" name=\"contact\" maxlength=\"200\" placeholder=\"e-mail\">"
+        "<div class=\"hp\"><label>Leave this empty <input type=\"text\" id=\"hp\" name=\"website\" tabindex=\"-1\" "
+        "autocomplete=\"off\"></label></div>"
+        "<p class=\"privacy\">%s</p><p class=\"err hidden\" id=\"err\"></p>"
+        "<div class=\"sub\" style=\"margin-bottom:0\"><button class=\"big\" id=\"send\" type=\"submit\">Send the report"
+        "</button><span class=\"older\">You get a report id to look it up later.</span></div></form>"
+        "<noscript><p class=\"err\">Sending needs JavaScript.</p></noscript>" % (platforms, versions, e(TESTING_PRIVACY)))
+    return testing_page("Report a problem - AutoBleem 2", "Report a problem.", body, REPORT_JS)
+
+
+def render_testing_thanks():
+    body = ("<div class=\"panel\" style=\"margin-top:1.4rem\"><h1>Received - thank you</h1><p>Keep this id. It is the "
+            "only way to look your result or report up - there is no mailbox.</p><div class=\"idbox\" id=\"rid\"></div>"
+            "<h3>What happens next</h3><ol class=\"next\"><li><b>We read it.</b> New reports are sorted once a day.</li>"
+            "<li><b>We try to repeat it</b> on the newest development build. Only a problem we can repeat becomes a "
+            "bug.</li><li><b>An idea</b> goes on the \"User ideas\" list and is read when we plan the next release.</li>"
+            "<li><b>The status</b> changes to \"received\", \"needs more info\", \"recorded as BUG-N\" or \"not a bug\"."
+            "</li></ol><div class=\"cta\" style=\"margin-bottom:0\"><a class=\"big plain\" id=\"again\" "
+            "href=\"/testing/\">Take another task</a><a class=\"dl\" id=\"st\" href=\"/testing/status.html\">See the "
+            "status of this id</a><a class=\"dl quiet\" href=\"/testing/\">Back to Testing</a></div></div>")
+    return testing_page("Thank you - AutoBleem 2", "Thank you - we have your report.", body, THANKS_JS)
+
+
+def render_testing_status():
+    body = ("<p class=\"lede\"><a href=\"/testing/\">&larr; Testing</a> &nbsp; Enter the id you were given after sending "
+            "a report. Nothing else is shown - no names, no contact details.</p>"
+            "<form id=\"f\" class=\"panel\"><label class=\"f\" for=\"rid\" style=\"margin-top:0\">Report id</label>"
+            "<div class=\"idrow\"><input type=\"text\" id=\"rid\" name=\"id\" maxlength=\"8\" autocomplete=\"off\">"
+            "<button class=\"big\" type=\"submit\">Look it up</button></div><p class=\"err hidden\" id=\"err\"></p></form>"
+            "<div class=\"panel hidden\" id=\"out\"></div>")
+    return testing_page("Report status - AutoBleem 2", "Look up a report by its id.", body, STATUS_JS)
+
+
+def testing_pages(info):
+    """[(path under the repository, page)] for the Testing pages of the current version's plans"""
+    pages = [(os.path.join("testing", "index.html"), render_testing_index(info)),
+             (os.path.join("testing", "report.html"), render_testing_report(info)),
+             (os.path.join("testing", "thanks.html"), render_testing_thanks()),
+             (os.path.join("testing", "status.html"), render_testing_status())]
+    for platform in info["plans"]:
+        if PLAN_ID_RE.match(platform) and platform not in ("index", "report", "thanks", "status"):
+            pages.append((os.path.join("testing", platform + ".html"), render_testing_task(info, platform)))
+    return pages
+
+
 def render_moved(name):
     """a page that moved to /repository/<name>: the old address stays alive for old links, a refresh and a link"""
     target = "/repository/" + name
@@ -2390,6 +2955,10 @@ def main():
         os.makedirs(os.path.join(repo, "store"), exist_ok=True)
         pages.append((os.path.join("store", "index.html"),
                       render_store(base_url, store_pages, extensions.get("store"), extensions.get("lanshare"))))
+    testplans = index_testplans(repo)
+    if testplans:
+        os.makedirs(os.path.join(repo, "testing"), exist_ok=True)
+        pages.extend(testing_pages(testplans))
     for name, page in pages:
         tmp = os.path.join(repo, os.path.dirname(name), ".%s.tmp" % os.path.basename(name))
         with open(tmp, "w", encoding="utf-8") as f:
