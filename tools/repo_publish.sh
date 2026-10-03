@@ -107,6 +107,27 @@ LOCAL=0
 PARTIAL=0
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# the Python that runs this machine's own steps (the generator merge, the assets): $PYTHON, else python3 or python
+# on PATH, else - an MSYS2 login shell on Windows drops the Windows PATH - the user's Python under %LOCALAPPDATA%
+# (the Microsoft Store one or a python.org install). The server's steps always run its own python3.
+find_python() {
+    if [ -n "${PYTHON:-}" ]; then echo "$PYTHON"; return; fi
+    local p base
+    for p in python3 python; do
+        if command -v "$p" >/dev/null 2>&1; then command -v "$p"; return; fi
+    done
+    # %LOCALAPPDATA% (a login shell may not pass it on: cygpath's folder id 28 is the same folder)
+    base="$( { [ -n "${LOCALAPPDATA:-}" ] && cygpath -u "$LOCALAPPDATA"; } 2>/dev/null || cygpath -u -F 28 2>/dev/null || true)"
+    if [ -n "$base" ]; then
+        for p in "$base"/Microsoft/WindowsApps/python3.exe "$base"/Programs/Python/Python3*/python.exe; do
+            if [ -x "$p" ]; then echo "$p"; return; fi
+        done
+    fi
+    echo "repo_publish.sh: no python3 or python found - set PYTHON=<path to python>" >&2
+    return 1
+}
+PY="$(find_python)"
+
 usage() { sed -n '2,87p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 withdraw_usage() {
@@ -255,7 +276,7 @@ trap 'rm -rf "$STAGE" "$STAGE.assets"' EXIT
 
 if [ "$KIND" = assets ]; then
     # repo_assets.py stages tools/site-assets/ (checked in); a theme directory as $2 is accepted and ignored
-    python3 "$HERE/repo_assets.py" "$STAGE.assets" ${2:+"$2"}
+    "$PY" "$HERE/repo_assets.py" "$STAGE.assets" ${2:+"$2"}
     set -- "$STAGE.assets"/*
 fi
 
@@ -296,7 +317,7 @@ if [ "$LOCAL" -eq 1 ]; then
 else
     ssh "$REPO_HOST" "cd $REPO_DIR/.tools 2>/dev/null && tar cf - repo_index.py repo_index.base.py repo_index.rev 2>/dev/null || true"         | tar xf - -C "$STAGE/.merge" 2>/dev/null || true
 fi
-if ! python3 "$HERE/repo_index_merge.py" --mine "$HERE/repo_index.py"         --theirs "$STAGE/.merge/repo_index.py" --theirs-base "$STAGE/.merge/repo_index.base.py"         --theirs-rev "$STAGE/.merge/repo_index.rev"         --out "$STAGE/.tools/repo_index.py" --out-base "$STAGE/.tools/repo_index.base.py"         --out-rev "$STAGE/.tools/repo_index.rev"; then
+if ! "$PY" "$HERE/repo_index_merge.py" --mine "$HERE/repo_index.py"         --theirs "$STAGE/.merge/repo_index.py" --theirs-base "$STAGE/.merge/repo_index.base.py"         --theirs-rev "$STAGE/.merge/repo_index.rev"         --out "$STAGE/.tools/repo_index.py" --out-base "$STAGE/.tools/repo_index.base.py"         --out-rev "$STAGE/.tools/repo_index.rev"; then
     KEEP="$(mktemp -d "${TMPDIR:-/tmp}/repo_index_conflict.XXXXXX")"
     cp "$STAGE/.tools/repo_index.py" "$KEEP/repo_index.py" 2>/dev/null || true
     cp "$STAGE/.merge/repo_index.py" "$KEEP/repo_index.repository.py" 2>/dev/null || true

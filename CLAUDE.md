@@ -26,7 +26,8 @@ and logos), then the page.
 - Commit a page change to `develop` (and `master`) **before** publishing: the generator is three-way merged
   with the server's copy (`tools/repo_index_merge.py`), never copied over it. Publish from a git checkout.
 - From Windows run it in the MSYS2 shell (Git Bash has no rsync):
-  `bash tools/repo_publish.sh index` just regenerates the pages.
+  `bash tools/repo_publish.sh index` just regenerates the pages. It finds a Windows Python by itself (an MSYS2
+  login shell drops the Windows PATH: `find_python` looks under %LOCALAPPDATA%); `PYTHON=<path>` overrides it.
 - Try a page change first against a copy of the tree (`python3 tools/repo_index.py <copy>`) and look at it in
   a browser - desktop and phone width - before publishing.
 - A `--local` publish run as root (a CI container) hands the tree back to its owner at the end; a failed
