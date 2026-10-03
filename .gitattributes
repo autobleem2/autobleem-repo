@@ -1,0 +1,5 @@
+# shell scripts run on Linux (the build server, the CI runner, the test laptop): LF in every checkout, also on a
+# Windows one with core.autocrlf (a CRLF repo_publish.sh fails with "set: pipefail: invalid option name")
+*.sh text eol=lf
+Caddyfile text eol=lf
+*.yml text eol=lf
