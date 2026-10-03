@@ -57,3 +57,48 @@ for `/submit/status` is `decisions/<id>.json`'s `state` when it exists, else `re
   as bug), every decision also in its audit log.
 - Caddy: routes `/submit/*` to `intake` on both the HTTPS name and `:9090`; nothing else of the data directory is
   served.
+
+## Running it
+
+The code is `intake/app/` (FastAPI, Python 3.12, `Dockerfile` like the admin panel's). It is a plain service: no
+login, no GitHub credentials, no env file.
+
+**Environment**
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AB_INTAKE_DIR` | `/data` | the data directory (the `intake_data` volume); created on the first write |
+| `AB_TESTPLANS_DIR` | `/srv/testplans` | the site's `testplans/`, mounted read-only |
+| `AB_INTAKE_SALT` | generated at start | salt of the address hash for the rate limit (a restart then forgets the windows) |
+| `AB_INTAKE_TRUSTED` | private and loopback ranges | space-separated networks whose `X-Forwarded-For` is believed |
+
+**The client address.** Caddy is the only thing that reaches the service, and it puts the client's address in
+`X-Forwarded-For` (replacing whatever the client sent). The service uses the first hop of that header when the direct
+peer is inside `AB_INTAKE_TRUSTED` (the compose network), and the direct peer otherwise, so a client that reaches the
+port directly cannot choose its own address. The address is hashed with the salt, kept in memory for its window and
+never written to disk or logged by the service.
+
+**Behaviour worth knowing** (the contract above stays as it is)
+- A request is counted against the rate limit when it is accepted; a refused request (400) costs nothing, and a
+  honeypot hit is not counted. A `claim` call of any kind counts against the claim limit.
+- A result's claim counts as assigned when it exists for the same platform and version, is for the submitted section
+  and has not been closed (by a result or a release); it is not required to be unexpired. Anything else is stored with
+  `unassigned: true`. The claim of an assigned result is closed with the result's id.
+- A claim past `claim_hours`, or released, gets a new claim (a different section when the counts say so) when its id
+  is sent again; releasing an already closed claim answers `{released: true}`.
+- Sizes: claim body 16 KB, result 256 KB, issue 25 MB (checked on `Content-Length` and while streaming), the zip at
+  most 5000 entries. The zip is only listed, never extracted.
+- Unknown platform/version/section/step and every other validation failure are 400; an unknown id or version for
+  `coverage` is 404.
+
+**Compose** (`docker/repo/compose.yml`): `docker compose --profile portal up -d --build` starts `intake`; the `admin`
+service mounts the same `intake_data` volume (at `/intake`, read-write: it writes `decisions/` only), and the site's
+`testplans/` is mounted into `intake` read-only. `docker/repo/Caddyfile` routes `/submit/*` to `intake:8000` on the
+HTTPS name and on `:9090`.
+
+**Tests** (a `python:3.12-slim` container, like the admin suite):
+
+    docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "$PWD":/w -w /w/intake python:3.12-slim \
+        sh -c "pip install -q -r requirements.txt pytest && python -m pytest -q -p no:cacheprovider"
+
+The fixtures are small plans in `tests/fixtures/testplans/<version>/<platform>.yaml`.

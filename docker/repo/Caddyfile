@@ -47,6 +47,19 @@
     }
 }
 
+# The tester portal's intake service (intake/README.md) - on both listeners, so the LAN rig on :9090 can test it.
+# Caddy sets X-Forwarded-For itself (the client's address, replacing any value the client sent), which the
+# service trusts only from this network. Nothing answers while the `portal` compose profile is not up (a 502 for
+# /submit/*, the site untouched). The 26 MB cap is a belt over the service's own limits (25 MB for an issue).
+(portal) {
+    handle /submit/* {
+        request_body {
+            max_size 26MB
+        }
+        reverse_proxy intake:8000
+    }
+}
+
 # The download counter's source (admin/app/downloads.py): a JSON access log of the HTTPS name, in a volume the
 # admin service reads. It carries no IP address and no header - the filter deletes them before the line is written -
 # and a request of a known bot or crawler is not logged at all. Rotated in plain text (the reader tells files by
@@ -86,6 +99,7 @@
     import counted
     import /etc/caddy/private/*.caddy
     import admin
+    import portal
     handle {
         import repo
     }
@@ -93,5 +107,8 @@
 
 # plain HTTP - the direct address, and LAN tests
 http://:9090 {
-    import repo
+    import portal
+    handle {
+        import repo
+    }
 }

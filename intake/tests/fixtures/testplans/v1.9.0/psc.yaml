@@ -1,0 +1,15 @@
+id: psc
+title: "PlayStation Classic"
+version: v1.9.0
+before_you_start: []
+sections:
+  - id: old-install
+    title: "Old install"
+    minutes: 5
+    needs: "A stick."
+    steps:
+      - id: old-install.1
+        do: "Install."
+        expect: "Done."
+        status: ""
+        comment: ""
