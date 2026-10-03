@@ -250,3 +250,27 @@ def test_publish_kind_testplans_files_a_pdf_beside_its_yaml_and_refuses_a_lone_p
     assert not (tmp_path / "site" / "testplans" / "alpha1").exists()
     # the landing page then links it by itself
     assert "Printable version" in (tmp_path / "site" / "testing" / "index.html").read_text(encoding="utf-8")
+
+
+def test_splash_bar_links_testing_under_the_same_condition(tmp_path):
+    assert repo_index.index_testplans(str(tmp_path)) is None
+    assert "/testing/" not in repo_index.render_splash(BASE_URL, [])
+    generate(tmp_path)
+    nav = repo_index.render_splash(BASE_URL, []).split("</header>")[0]
+    assert '<a href="/testing/">Testing</a><a href="https://github.com/autobleem2">GitHub</a>' in nav
+
+
+def test_task_page_give_it_back_is_a_secondary_link_and_the_date_is_locale_free(tmp_path):
+    repo, _ = generate(tmp_path)
+    page = read(repo, "testing", "psc.html")
+    assert "el('a','dl quiet','Give it back')" in page and "el('button','dl quiet'" not in page
+    assert "toLocaleDateString" not in page and "function stamp(d)" in page and "'Oct'" in page
+    assert "+'&k=result'" in page
+
+
+def test_thanks_page_words_a_test_result_and_an_issue_differently(tmp_path):
+    repo, _ = generate(tmp_path)
+    page = read(repo, "testing", "thanks.html")
+    assert 'id="keep"' in page and "look your report up" in page            # the default is the issue wording
+    assert "qs('k')==='result'" in page and "we have your test result" in page and "look your result up" in page
+    assert "report.html" not in page and "k=result" not in read(repo, "testing", "report.html")
