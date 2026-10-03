@@ -35,6 +35,16 @@ and logos), then the page.
   by sha256). The page does not list it and the index never prunes it; a file there is never replaced in
   place - a new version is a new file name.
 
+## The download counter (2026-10-03)
+
+The admin panel's **Download stats** tab (release team only) counts downloads per file and day. Caddy serves the
+files statically, so nothing is in the download path: Caddy's JSON access log (the `(counted)` snippet in
+`docker/repo/Caddyfile`, HTTPS name only, IPs and all headers deleted by its filter, bots skipped) goes to the
+`caddy_logs` volume and the admin service reads it incrementally into `downloads.sqlite3` (`admin/app/downloads.py`).
+Counted: GET + 200 of a download file type; not HEAD/206/304/404. Stored: day, path, count - no personal data.
+What is counted, where it lives, how to switch it on and the tests: `admin/README.md`, "Download stats". The
+Caddy log settings must keep the filter - never add an IP or header field to the log.
+
 ## The AutoBleem Store's catalog (2026-09-24)
 
 `store/<platform>/` (psc, rpi, rpi64, pcusb, win) is what the AutoBleem Store extension offers; its layout is

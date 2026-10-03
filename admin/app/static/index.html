@@ -280,6 +280,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
   <a href="#bugs" data-tab="bugs">Bugs</a>
   <a href="#releases" data-tab="releases">Releases</a>
   <a href="#builds" data-tab="builds">Builds</a>
+  <a href="#downloads" data-tab="downloads" id="downloadsLink" hidden>Download stats</a>
   <a href="#server" data-tab="server">Server</a>
 </nav>
 </header>
@@ -490,6 +491,14 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
     <div id="storePlatforms"><p class="dim">Loading...</p></div>
   </section>
 
+  <section id="tab-downloads" class="tab-content">
+    <section class="panel">
+      <h2>Download stats <small class="dim" id="dlSince"></small></h2>
+      <div id="dlSummary"><p class="dim">Loading...</p></div>
+    </section>
+    <div id="dlDetail"></div>
+  </section>
+
   <section id="tab-server" class="tab-content">
     <section class="panel">
       <h2>Health</h2>
@@ -516,7 +525,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
 const API = "/admin/api/";let canAct = false, firstStatus = true;
 const seenActive = new Set();
 const selectedJob = {}; // run id -> job name selected in that card
-const TABS = ["roadmap", "tasks", "bugs", "releases", "builds", "store", "server"];  // the audit log lives on the Server tab (an old #audit link opens it)
+const TABS = ["roadmap", "tasks", "bugs", "releases", "builds", "store", "downloads", "server"];  // the audit log lives on the Server tab (an old #audit link opens it)
 
 function el(tag, attrs, ...kids) {
   const e = document.createElement(tag);
@@ -813,6 +822,41 @@ async function loadStore() {
   renderStore.loaded = true;
   try { renderStore(await api("store")); }
   catch (e) { document.getElementById("storePlatforms").replaceChildren(el("p", {class: "bad"}, e.message)); }
+}
+
+// -------------------------------------------------------------------------------- Download stats tab (release team only)
+function dlTable(head, rows) {
+  return el("div", {class: "scroll"}, el("table", {},
+    el("thead", {}, el("tr", {}, head.map(h => el("th", {}, h)))),
+    el("tbody", {}, rows.length ? rows : [el("tr", {}, el("td", {class: "dim", colspan: head.length}, "nothing yet"))])));
+}
+function dlNums(g) { return [g.today, g.last7, g.last30, g.total].map(n => el("td", {class: "num"}, n)); }
+function renderDownloads(d) {
+  document.getElementById("dlSince").textContent = d.since ? "counted since " + d.since : "nothing counted yet";
+  const sum = document.getElementById("dlSummary"); sum.replaceChildren();
+  const boxes = el("div", {class: "row"});
+  for (const [label, n] of [["Today", d.today], ["Last 7 days", d.last7], ["Last 30 days", d.last30], ["All time", d.total]])
+    boxes.append(el("div", {}, el("strong", {style: "font-size:1.6rem"}, n), el("br"), el("small", {class: "dim"}, label)));
+  sum.append(boxes);
+  const split = (rows) => rows.filter(g => g.last30).sort((a, b) => b.last30 - a.last30)
+    .map(g => el("tr", {}, el("td", {}, g.name), el("td", {class: "num"}, g.last30)));
+  sum.append(el("h3", {}, "Top 10 files, last 7 days"),
+    dlTable(["File", "7 days", "Total"], d.top.map(f => el("tr", {}, el("td", {}, el("code", {}, f.path)),
+      el("td", {class: "num"}, f.last7), el("td", {class: "num"}, f.total)))),
+    el("h3", {}, "Last 30 days by platform"), dlTable(["Platform", "Downloads"], split(d.platforms)),
+    el("h3", {}, "Last 30 days by channel"), dlTable(["Channel", "Downloads"], split(d.channels)));
+  const head = ["Today", "7 days", "30 days", "Total"], box = document.getElementById("dlDetail");
+  const panel = (title, first, rows, make) => el("section", {class: "panel"}, el("h2", {}, title),
+    dlTable([first].concat(head), rows.map(make)));
+  box.replaceChildren(
+    panel("By group", "Group", d.groups, g => el("tr", {}, el("td", {}, g.name), dlNums(g))),
+    panel("By version", "Version", d.versions, g => el("tr", {}, el("td", {}, el("code", {}, g.name)), dlNums(g))),
+    panel("Every file", "File", d.files, f => el("tr", {}, el("td", {}, el("code", {}, f.path)), dlNums(f))));
+}
+async function loadDownloads() {
+  loadDownloads.loaded = true;
+  try { renderDownloads(await api("downloads")); }
+  catch (e) { document.getElementById("dlSummary").replaceChildren(el("p", {class: "bad"}, e.message)); }
 }
 
 // -------------------------------------------------------------------------------- Roadmap tab (R27)
@@ -1307,6 +1351,7 @@ function showTab(name) {
   }
   try { localStorage.setItem("ab-admin-tab", name); } catch (e) { /* private browsing etc */ }
   if (name === "store" && !renderStore.loaded) loadStore();
+  if (name === "downloads") loadDownloads();
   if ((name === "roadmap" || name === "tasks") && !loadRoadmap.loaded) loadRoadmap();
   if (name === "bugs" && !loadBugs.loaded) loadBugs();
 }
@@ -1323,6 +1368,7 @@ async function start() {
   const me = await api("me");
   canAct = me.can_act;
   document.body.classList.toggle("can-act", canAct);
+  document.getElementById("downloadsLink").hidden = !canAct;  // the counts are the release team's alone
   document.getElementById("me").textContent = me.login;
   document.getElementById("meRole").textContent = canAct ? "release team" : "read only";
   // the avatar: the GitHub picture of the login, its first letter when the picture does not load

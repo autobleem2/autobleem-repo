@@ -20,6 +20,8 @@ class Settings:
     repo_dir: str = os.environ.get("AB_REPO_DIR", "/srv/repo")
     # where the audit log and the notifier's memory live
     data_dir: str = os.environ.get("AB_DATA_DIR", "/data")
+    # Caddy's access log (a shared volume, read-only here): what the Downloads tab counts
+    log_dir: str = os.environ.get("AB_LOG_DIR", "/logs")
     # the Teams tab's private feed (teams.json), mounted read-only from a directory outside the site's tree
     teams_file: str = os.environ.get("AB_ADMIN_TEAMS_FILE", "/feed/teams.json")
     # the repositories whose runs the panel shows
