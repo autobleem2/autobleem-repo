@@ -51,7 +51,12 @@ file is not reachable from the web. When it is missing or older than 60 minutes 
 They read the tester portal's data directory (`AB_INTAKE_DIR`, default `/intake`; the layout is the contract in
 `intake/README.md`) and the site's `testplans/<version>/<platform>.yaml` (through `AB_REPO_DIR`). A missing
 directory shows "No data yet". Code: `app/testers.py`; tests `tests/test_testers.py`, sample data
-`tests/intake_data.py` (also what `tools/dev_server.py` shows).
+`tests/intake_data.py`.
+
+Preview without GitHub: `cd admin && python tools/dev_server.py [--port N]` (default `127.0.0.1:8765`, logged in as a
+release manager; needs only `requirements.txt`, no pytest). It shows sample data - unless `AB_INTAKE_DIR` and/or
+`AB_REPO_DIR` are set, then the preview reads those directories instead (decisions are written into the intake one),
+e.g. `AB_INTAKE_DIR=/path/to/intake AB_REPO_DIR=/path/to/site python tools/dev_server.py --port 8770`.
 
 - **Test results** (`GET testresults?version=`): per platform, the number of results and a steps-by-outcome matrix
   (OK / problem / N/A per step, plan order, grouped by section), the problem comments under their step, and each raw

@@ -3,10 +3,11 @@ realistic data (an in-progress run with steps, a queued run, two runners, finish
 catalog), no auth (every request is answered as if "alice", a release-manager, were logged in) - so
 the page can be looked at in a browser without a GitHub App or oauth2-proxy.
 
-    cd admin && python tools/dev_server.py
+    cd admin && python tools/dev_server.py [--port N] [--host H]
 
-Then open http://127.0.0.1:8765/admin/ . Ctrl-C to stop; nothing here is written outside a temp dir
-that is thrown away on exit.
+Then open http://127.0.0.1:8765/admin/ . Ctrl-C to stop. With AB_REPO_DIR / AB_INTAKE_DIR set, the tester tabs
+read those directories (decisions are written into the intake one); without them a temp tree of sample data is
+used and thrown away on exit. Needs only `requirements.txt` (no pytest).
 """
 import json
 import os
@@ -17,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # admin/, for `app` and `tests`
 
 from tests.intake_data import write_intake, write_plans  # noqa: E402  (the tester tabs' sample data)
-from tests.test_admin import FakeGitHub, run  # noqa: E402  (the same fake the test suite uses)
+from tests.fakes import FakeGitHub, run  # noqa: E402  (the same fake the test suite uses; needs no pytest)
 
 from app import main  # noqa: E402
 from app.config import Settings  # noqa: E402
@@ -116,25 +117,37 @@ def build_site_tree(root):
 
 
 def main_():
+    import argparse
     import uvicorn
     from pathlib import Path
 
+    ap = argparse.ArgumentParser(description="local preview of the admin panel")
+    ap.add_argument("--port", type=int, default=PORT, help="port to listen on (default %d)" % PORT)
+    ap.add_argument("--host", default=HOST)
+    args = ap.parse_args()
     with tempfile.TemporaryDirectory(prefix="ab-admin-dev-") as tmp:
         tmp = Path(tmp)
-        site = tmp / "site"
-        build_site_tree(site)
-        write_plans(str(site))
-        write_intake(str(tmp / "intake"))  # the tester tabs' sample data
-        settings = Settings(repo_dir=str(site), data_dir=str(tmp / "data"), repos=["autobleem"],
-                            org="autobleem2", release_team="release-managers", intake_dir=str(tmp / "intake"))
+        # AB_REPO_DIR / AB_INTAKE_DIR set = that tree is used as it is (the intake dir is written to by decisions);
+        # unset = a temp tree of sample data
+        repo_dir, intake_dir = os.environ.get("AB_REPO_DIR"), os.environ.get("AB_INTAKE_DIR")
+        if not repo_dir:
+            site = tmp / "site"
+            build_site_tree(site)
+            write_plans(str(site))
+            repo_dir = str(site)
+        if not intake_dir:
+            write_intake(str(tmp / "intake"))
+            intake_dir = str(tmp / "intake")
+        settings = Settings(repo_dir=repo_dir, data_dir=str(tmp / "data"), repos=["autobleem"],
+                            org="autobleem2", release_team="release-managers", intake_dir=intake_dir)
         gh = build_github()
         gh.members.add("alice")
         gh.managers.add("alice")
         app = main.create_app(settings, gh=gh, start_notifier=False)
         asgi = InjectUser(app, "alice")
         print("AutoBleem admin dev preview: http://%s:%d/admin/ (logged in as 'alice', a release manager)"
-             % (HOST, PORT))
-        uvicorn.run(asgi, host=HOST, port=PORT, log_level="warning")
+              % (args.host, args.port))
+        uvicorn.run(asgi, host=args.host, port=args.port, log_level="warning")
 
 
 class InjectUser:
