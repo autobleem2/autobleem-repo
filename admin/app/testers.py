@@ -338,9 +338,12 @@ class Intake:
             data["reason"] = reason
         data["by"], data["at"] = who, _now_iso()
         folder = os.path.join(self.dir, "decisions")
-        os.makedirs(folder, exist_ok=True)
+        if not os.path.isdir(folder):   # normally made by intake at its start; the shared group's modes
+            os.makedirs(folder, exist_ok=True)
+            os.chmod(folder, 0o2770)
         tmp = os.path.join(folder, ".%s.%d.tmp" % (report_id, os.getpid()))
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f)
+        os.chmod(tmp, 0o640)   # group-readable: intake's /submit/status reads it
         os.replace(tmp, os.path.join(folder, report_id + ".json"))
         return "%s is now %s" % (report_id, data["state"])
