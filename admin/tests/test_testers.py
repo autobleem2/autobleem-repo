@@ -43,6 +43,12 @@ def test_version_order_is_the_sites():
                                               "v2.0.0-rc1", "v2.0.0"]
 
 
+def test_version_order_puts_a_point_release_between_its_number_and_the_next():
+    tags = ["v2.0.0-alpha2", "v2.0.0-alpha1.10", "v2.0.0-alpha1.2", "v2.0.0-alpha1", "v2.0.0-alpha1.1", "v2.0.0-beta1"]
+    assert sorted(tags, key=version_key) == ["v2.0.0-alpha1", "v2.0.0-alpha1.1", "v2.0.0-alpha1.2",
+                                              "v2.0.0-alpha1.10", "v2.0.0-alpha2", "v2.0.0-beta1"]
+
+
 def test_version_default_is_the_highest(setup):
     client, _ = setup
     d = get(client, "testresults").json()

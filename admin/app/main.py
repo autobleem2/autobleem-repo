@@ -45,6 +45,7 @@ class PreviewBuildRequest(BaseModel):
 class PromoteRequest(BaseModel):
     kind: str
     version: str = ""
+    point: bool = False
     dry_run: bool = True
 
 
@@ -238,9 +239,9 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
             raise HTTPException(502, str(e))
 
     @app.get("/admin/api/promote/preview")
-    def preview(kind: str, version: str = "", who=Depends(viewer)):
+    def preview(kind: str, version: str = "", point: bool = False, who=Depends(viewer)):
         try:
-            return {"tag": actions.preview(kind, version or None)}
+            return {"tag": actions.preview(kind, version or None, point)}
         except ValueError as e:
             raise HTTPException(400, str(e))
 
@@ -257,7 +258,7 @@ def create_app(settings=default_settings, gh=None, start_notifier=True):
     @app.post("/admin/api/promote")
     def promote(body: PromoteRequest, who=Depends(actor)):
         return act(who, "promote", body.model_dump(),
-                   lambda: actions.promote(body.kind, body.version, body.dry_run))
+                   lambda: actions.promote(body.kind, body.version, body.dry_run, body.point))
 
     @app.post("/admin/api/runs/{repo}/{run_id}/cancel")
     def cancel(repo: str, run_id: int, who=Depends(actor)):

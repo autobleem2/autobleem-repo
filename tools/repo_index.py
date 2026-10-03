@@ -157,12 +157,12 @@ def version_key(tag):
     development build, which the plain string order had the other way round (2026-09-21)."""
     m = re.match(r"^v?(\d+)\.(\d+)(?:\.(\d+))?(?:-(.*))?$", tag)
     if not m:
-        return (0, 0, 0, 0, (0, 0, tag), PUBLISHED_AT.get(tag, 0))
+        return (0, 0, 0, 0, (0, 0, 0, tag), PUBLISHED_AT.get(tag, 0))
     major, minor, patch, suffix = m.groups()
     label = re.sub(r"-[0-9a-f]{7,40}$", "", suffix or "")
     ranks = {"pre": 0, "alpha": 1, "beta": 2, "rc": 3}
-    lm = re.match(r"^(pre|alpha|beta|rc)(\d*)$", label)
-    label_key = (ranks[lm.group(1)], int(lm.group(2) or 0), "") if lm else (4, 0, label)
+    lm = re.match(r"^(pre|alpha|beta|rc)(\d*)(?:\.(\d+))?$", label)  # alpha1.1: a point release of alpha1
+    label_key = (ranks[lm.group(1)], int(lm.group(2) or 0), int(lm.group(3) or 0), "") if lm else (4, 0, 0, label)
     return (int(major), int(minor), int(patch or 0), 0 if suffix else 1, label_key, PUBLISHED_AT.get(tag, 0))
 
 
@@ -841,11 +841,13 @@ def pcsx_version_key(version):
     # v2.1.0, ...): above every legacy build (a first key no date or r-number reaches), and among themselves
     # in semver order - a pre-release below its release, alpha2 below alpha10 below beta1. Before this they
     # keyed as (0, ...), lowest of all, and the index deleted the version it had just been given.
-    m = re.match(r"^v(\d+)\.(\d+)\.(\d+)(?:-([a-z]+)(\d*)(.*))?$", version)
+    # a point release (v2.0.0-alpha1.1) sits between its number and the next: alpha1 < alpha1.1 < alpha2
+    m = re.match(r"^v(\d+)\.(\d+)\.(\d+)(?:-([a-z]+)(\d*)(?:\.(\d+))?(.*))?$", version)
     if m:
         pre = m.group(4)
         return (10 ** 9, (int(m.group(1)), int(m.group(2)), int(m.group(3))), 0 if pre else 1,
-                (pre or "", int(m.group(5) or 0), m.group(6) or ""), PUBLISHED_AT.get(version, 0), version)
+                (pre or "", int(m.group(5) or 0), int(m.group(6) or 0), m.group(7) or ""),
+                PUBLISHED_AT.get(version, 0), version)
     m = re.match(r"^r(\d+)(?:-(\d+)-g[0-9a-f]+)?$", version)
     if m:
         return (int(m.group(1)), 0, "", int(m.group(2) or 0), PUBLISHED_AT.get(version, 0), version)
@@ -2267,8 +2269,9 @@ def splash_day(date):
 
 
 def next_milestone(version):
-    """v2.0.0-alpha1 -> alpha2, v2.0.0-rc2 -> rc3; a stable or unreadable version -> None"""
-    m = re.match(r"^v?\d+\.\d+(?:\.\d+)?-(alpha|beta|rc)(\d+)$", version)
+    """v2.0.0-alpha1 -> alpha2, v2.0.0-rc2 -> rc3, v2.0.0-alpha1.1 -> alpha2 (a point release is a fix on its
+    number, the milestone ahead is the next number); a stable or unreadable version -> None"""
+    m = re.match(r"^v?\d+\.\d+(?:\.\d+)?-(alpha|beta|rc)(\d+)(?:\.\d+)?$", version)
     return "%s%d" % (m.group(1), int(m.group(2)) + 1) if m else None
 
 

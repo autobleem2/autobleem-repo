@@ -190,6 +190,19 @@ def test_next_tag():
         next_tag(["v2.0.0"], "beta")
 
 
+def test_next_tag_point_release():
+    tags = ["v2.0.0-alpha1"]
+    assert next_tag(tags, "alpha", point=True) == "v2.0.0-alpha1.1"
+    assert next_tag(tags + ["v2.0.0-alpha1.1"], "alpha", point=True) == "v2.0.0-alpha1.2"
+    assert next_tag(["v2.0.0-alpha1.9", "v2.0.0-alpha1.10", "v2.0.0-alpha1"], "alpha", point=True) == "v2.0.0-alpha1.11"
+    # a plain alpha after a point is still the next number
+    assert next_tag(tags + ["v2.0.0-alpha1.1"], "alpha") == "v2.0.0-alpha2"
+    with pytest.raises(ValueError):
+        next_tag(tags + ["v2.0.0-beta1"], "alpha", point=True)  # beta is the current pre-release
+    with pytest.raises(ValueError):
+        next_tag(tags, "release", point=True)
+
+
 def test_notifier_reports_a_finished_run_once(tmp_path):
     gh = FakeGitHub()
     settings = Settings(data_dir=str(tmp_path), repos=["autobleem"], telegram_token="t", telegram_chat="c")

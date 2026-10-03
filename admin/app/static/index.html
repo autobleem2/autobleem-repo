@@ -484,6 +484,7 @@ dialog#howto #howtoBody{display:block;max-height:min(72vh,42rem);overflow:auto;b
           <option value="release">Release</option>
         </select>
         <input type="text" id="version" placeholder="X.Y.Z (only for a new version)" size="24">
+        <label><input type="checkbox" id="promotePoint"> point release (alpha1 &rarr; alpha1.1)</label>
         <label><input type="checkbox" id="promoteDry" checked> dry run</label>
         <span>makes <code id="nextTag">...</code></span>
         <button id="promoteGo" type="button" class="danger">Promote</button>
@@ -817,7 +818,7 @@ async function preview() {
   const kind = document.getElementById("kind").value, version = document.getElementById("version").value.trim();
   const out = document.getElementById("nextTag"), go = document.getElementById("promoteGo");
   try {
-    out.textContent = (await api("promote/preview?kind=" + kind + "&version=" + encodeURIComponent(version))).tag;
+    out.textContent = (await api("promote/preview?kind=" + kind + "&version=" + encodeURIComponent(version) + "&point=" + document.getElementById("promotePoint").checked)).tag;
     go.disabled = false;
   } catch (e) { out.textContent = e.message; go.disabled = true; }
 }
@@ -1531,12 +1532,13 @@ async function start() {
         {branch, platforms, dry_run: document.getElementById("previewDry").checked});
   };
   document.getElementById("kind").onchange = preview;
+  document.getElementById("promotePoint").onchange = preview;
   document.getElementById("version").oninput = () => { clearTimeout(preview.t); preview.t = setTimeout(preview, 400); };
   document.getElementById("promoteGo").onclick = () => {
     const dry = document.getElementById("promoteDry").checked;
     act("Promote to " + document.getElementById("nextTag").textContent + (dry ? " (dry run)" : ""), "promote",
         {kind: document.getElementById("kind").value, version: document.getElementById("version").value.trim(),
-         dry_run: dry}, !dry);
+         point: document.getElementById("promotePoint").checked, dry_run: dry}, !dry);
   };
   document.getElementById("withdrawGo").onclick = () => {
     const kind = document.getElementById("withdrawKind").value;

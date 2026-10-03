@@ -30,12 +30,12 @@ def version_key(tag):
     v2.0.0-alpha1 < v2.0.0-alpha2 < v2.0.0-rc1 < v2.0.0; a trailing commit hash is ignored."""
     m = re.match(r"^v?(\d+)\.(\d+)(?:\.(\d+))?(?:-(.*))?$", tag)
     if not m:
-        return (0, 0, 0, 0, (0, 0, tag))
+        return (0, 0, 0, 0, (0, 0, 0, tag))
     major, minor, patch, suffix = m.groups()
     label = re.sub(r"-[0-9a-f]{7,40}$", "", suffix or "")
     ranks = {"pre": 0, "alpha": 1, "beta": 2, "rc": 3}
-    lm = re.match(r"^(pre|alpha|beta|rc)(\d*)$", label)
-    label_key = (ranks[lm.group(1)], int(lm.group(2) or 0), "") if lm else (4, 0, label)
+    lm = re.match(r"^(pre|alpha|beta|rc)(\d*)(?:\.(\d+))?$", label)  # alpha1.1: a point release of alpha1
+    label_key = (ranks[lm.group(1)], int(lm.group(2) or 0), int(lm.group(3) or 0), "") if lm else (4, 0, 0, label)
     return (int(major), int(minor), int(patch or 0), 0 if suffix else 1, label_key)
 
 

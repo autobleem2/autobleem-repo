@@ -543,3 +543,10 @@ def test_modes_are_group_shared_whatever_the_umask(client, data):
     for folder in [d for d, _, _ in os.walk(data)]:
         assert os.stat(folder).st_mode & 0o7777 == 0o2770, folder
     assert os.path.isdir(os.path.join(data, "decisions"))   # made at start, for the panel to write into
+
+
+def test_version_order_puts_a_point_release_between_its_number_and_the_next():
+    from app.store import version_key
+    tags = ["v2.0.0-alpha2", "v2.0.0-alpha1.10", "v2.0.0-alpha1.2", "v2.0.0-alpha1", "v2.0.0-alpha1.1", "v2.0.0-beta1"]
+    assert sorted(tags, key=version_key) == ["v2.0.0-alpha1", "v2.0.0-alpha1.1", "v2.0.0-alpha1.2",
+                                              "v2.0.0-alpha1.10", "v2.0.0-alpha2", "v2.0.0-beta1"]
