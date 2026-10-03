@@ -1,0 +1,47 @@
+# A trimmed copy of the alpha1 plan's shape for the intake tests.
+id: psc
+title: "PlayStation Classic"
+version: v2.0.0-alpha1
+before_you_start:
+  - "You need: a PlayStation Classic and a USB stick."
+sections:
+  - id: psc-install
+    title: "Install with the Windows installer and first boot"
+    minutes: 10
+    needs: "A Windows PC, a USB stick, a PlayStation Classic."
+    steps:
+      - id: psc-install.1
+        do: "Run the installer with the stick plugged in."
+        expect: "A window with the Channel box."
+        status: ""
+        comment: ""
+      - id: psc-install.2
+        do: "Press Install and wait."
+        expect: "It ends with the stick named SONY."
+        status: ""
+        comment: ""
+  - id: psc-launcher
+    title: "The launcher and its menus"
+    minutes: 8
+    needs: "The installed stick."
+    steps:
+      - id: psc-launcher.1
+        do: "Switch the console on."
+        expect: "The launcher shows the games."
+        status: ""
+        comment: ""
+      - id: psc-launcher.2
+        do: "Open Options."
+        expect: "The Options screen opens."
+        status: ""
+        comment: ""
+  - id: psc-store
+    title: "The Store"
+    minutes: 5
+    needs: "A USB Wi-Fi dongle."
+    steps:
+      - id: psc-store.1
+        do: "Open the Store."
+        expect: "The catalog loads."
+        status: ""
+        comment: ""

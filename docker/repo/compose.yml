@@ -17,6 +17,11 @@
 # this compose network - Caddy routes /admin and /oauth2/ to them on the HTTPS name only.
 #
 #   docker compose --profile admin up -d --build                   # once admin/.env and admin/app-key.pem exist
+#
+# The tester portal's intake service (intake/README.md, the `portal` profile): Caddy routes /submit/* to it on
+# both listeners. Its data is the intake_data volume, which the admin service reads too (it writes decisions/).
+#
+#   docker compose --profile portal up -d --build
 services:
   caddy:
     image: caddy:2
@@ -55,6 +60,25 @@ services:
       - ${ADMIN_FEED_DIR:-/home/claude/admin-data}:/feed:ro
       - ../../admin/app-key.pem:/run/secrets/app-key.pem:ro
       - admin_data:/data
+      # the tester portal's data (intake/README.md): the panel reads all of it and writes decisions/ only, so the
+      # mount is read-write. It is the only place besides `intake` that sees this volume.
+      - intake_data:/intake
+
+  # the tester portal's intake service (intake/README.md): Caddy routes /submit/* to it on both listeners. It sees
+  # the site tree through one read-only mount, testplans/ - nothing else of it - and writes only its own volume.
+  # It has no GitHub credentials and no env file.
+  intake:
+    profiles: [portal]
+    build: ../../intake
+    container_name: autobleem-intake
+    restart: unless-stopped
+    environment:
+      AB_INTAKE_DIR: /data
+      AB_TESTPLANS_DIR: /srv/testplans
+      AB_INTAKE_SALT: ${AB_INTAKE_SALT:-}   # empty = generated at start
+    volumes:
+      - intake_data:/data
+      - ${REPO_DIR:-/home/claude/autobleem-repo}/testplans:/srv/testplans:ro
 
   # the GitHub login in front of it: org members only, the session a secure cookie
   oauth2-proxy:
@@ -81,3 +105,4 @@ volumes:
   caddy_config:
   caddy_logs:
   admin_data:
+  intake_data:
