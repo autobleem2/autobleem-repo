@@ -53,6 +53,20 @@ Counted: GET + 200 of a download file type; not HEAD/206/304/404. Stored: day, p
 What is counted, where it lives, how to switch it on and the tests: `admin/README.md`, "Download stats". The
 Caddy log settings must keep the filter - never add an IP or header field to the log.
 
+## The volunteer tester pages (2026-10-03)
+
+`testplans/<version>/<platform>.yaml` is what the hub's CI publishes (`repo_publish.sh testplans FILES...`: each file
+goes into the folder its own `version:` line names; the hub's folder is only a short name like `alpha1`). Every index
+run reads them (`index_testplans`, a small YAML-subset parser - the server has no PyYAML) and writes
+`testplans/index.json` (the contract is `intake/README.md`) and the **Testing** pages under `testing/`: `index.html`
+(a card per platform, the coverage hint from `/submit/coverage`), `<platform>.html` (the task page: the whole plan
+embedded as JSON, one section shown after `/submit/claim`), `report.html`, `thanks.html`, `status.html`. No
+`testplans/` folder = no pages. The pages use `page_head` and `PAGE_CSS` plus `TESTING_CSS` (from
+`mockups/testing/site.css`); the plan's texts only ever reach the page as JSON data and `textContent`. Every page's
+top bar links **Testing** (`/testing/`) once a plan exists. A `<platform>.pdf` published in the same call as its
+`<platform>.yaml` (the hub's printable plan) goes into the same folder and the landing card links it as "Printable
+version". Tested in `tests/test_testing_pages.py`.
+
 ## The AutoBleem Store's catalog (2026-09-24)
 
 `store/<platform>/` (psc, rpi, rpi64, pcusb, win) is what the AutoBleem Store extension offers; its layout is
@@ -106,7 +120,8 @@ The owner approved the 2026-09-23 redesign ("look and feel of the page is great"
 when asked.** New content fits into the existing pieces, it does not bring its own.
 
 - **The top.** Every inner page starts with `page_head(title, tagline)`: the slim sticky bar (emblem, "AutoBleem 2
-  Downloads", Store / Manual / All files / GitHub) and the short banner - one line of text on the left, the C3
+  Downloads", Store / Manual / All files / Testing / GitHub - Testing only when the site has `testplans/index.json`,
+  `HAS_TESTING`) and the short banner - one line of text on the left, the C3
   logo on the right (hidden on a phone). Never a full-width hero again, never a second header.
 - **The palette and type** are `PAGE_CSS`'s `:root` tokens (graphite, cyan, magenta, ink, dim; rel/pre/dev/warn)
   and Red Hat Text. No colours or fonts outside them.

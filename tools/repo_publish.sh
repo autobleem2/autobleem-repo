@@ -51,6 +51,11 @@
 #                                                                                 build - the nightly channel; newest kept, an older one pruned)
 #   tools/repo_publish.sh manuals build_manuals/*/*.pdf                        -> manuals/ (the user manuals, one PDF
 #                                                                                 per language - tools/build_manuals.py)
+#   tools/repo_publish.sh testplans testing/alpha1/*.yaml testing/alpha1/*.pdf -> testplans/<version>/ (the volunteer test
+#                                                                                 plans, from the hub's CI: each file goes
+#                                                                                 into the folder named by its own
+#                                                                                 `version:` line; the index then writes
+#                                                                                 testplans/index.json and the testing/ pages)
 #   tools/repo_publish.sh db db/covers*.db                                     -> db/
 #   tools/repo_publish.sh mirror opentyrian tyrian21.zip                       -> mirror/opentyrian/ (third-party files a
 #                                                                                 build fetches - an App's freeware game
@@ -129,7 +134,7 @@ find_python() {
 }
 PY="$(find_python)"
 
-usage() { sed -n '2,87p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,92p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 withdraw_usage() {
     cat <<'EOF' >&2
@@ -261,6 +266,7 @@ case "$KIND" in
     pcsx-ab)   [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="emu/pcsx-ab/$VERSION" ;;
     pcsx-nightly)    [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="emu/pcsx-abnxt/nightly/$VERSION" ;;
     manuals)   [ $# -ge 1 ] || usage 1; DEST="manuals" ;;
+    testplans) [ $# -ge 1 ] || usage 1; DEST="testplans" ;;
     db)        [ $# -ge 1 ] || usage 1; DEST="db" ;;
     mirror)    [ $# -ge 2 ] || usage 1; NAME="$1"; shift; DEST="mirror/$NAME" ;;
     assets)    DEST="assets" ;;
@@ -282,17 +288,49 @@ if [ "$KIND" = assets ]; then
     set -- "$STAGE.assets"/*
 fi
 
+# a test plan goes into the folder its own `version:` line names (the hub's folder is only a short name like
+# alpha1); the file must be <platform>.yaml and the version a plain folder name
+plan_version() {
+    local v
+    case "$(basename "$1")" in
+        *[!a-z0-9.]*|.*|*.*.*) echo "not a test plan (<platform>.yaml): $1" >&2; return 1 ;;
+        *.yaml) ;;
+        *) echo "not a test plan (<platform>.yaml): $1" >&2; return 1 ;;
+    esac
+    v="$(sed -n 's/^version:[[:space:]]*//p' "$1" | head -n 1 | tr -d "\"'\r")"
+    case "$v" in
+        ""|*[!A-Za-z0-9._-]*|.*) echo "no usable 'version:' line in $1" >&2; return 1 ;;
+    esac
+    echo "$v"
+}
+
 if [ -n "$DEST" ]; then
     mkdir -p "$STAGE/$DEST"
     for f in "$@"; do
         [ -f "$f" ] || { echo "not a file: $f" >&2; exit 1; }
-        cp "$f" "$STAGE/$DEST/"
+        FDEST="$DEST"
+        if [ "$KIND" = testplans ]; then
+            plan="$f"
+            case "$f" in
+                # a plan's printable PDF goes beside its yaml: the one passed in this call with the same name
+                *.pdf) plan="${f%.pdf}.yaml"
+                       case " $* " in *" $plan "*) ;; *) echo "no $(basename "$plan") in this call for $f" >&2; exit 1 ;; esac ;;
+            esac
+            pv="$(plan_version "$plan")" || exit 1
+            FDEST="$DEST/$pv"
+        fi
+        mkdir -p "$STAGE/$FDEST"
+        cp "$f" "$STAGE/$FDEST/"
         case "$f" in
-            *.json|*.txt|*.sha256|*.ttf) ;;
-            *) (cd "$STAGE/$DEST" && sha256sum "$(basename "$f")" > "$(basename "$f").sha256") ;;
+            *.json|*.txt|*.sha256|*.ttf|*.yaml) ;;
+            *) (cd "$STAGE/$FDEST" && sha256sum "$(basename "$f")" > "$(basename "$f").sha256") ;;
         esac
     done
-    echo "publishing to $DEST: $(cd "$STAGE/$DEST" && ls | grep -v '\.sha256$' | tr '\n' ' ')"
+    if [ "$KIND" = testplans ]; then
+        echo "publishing to $DEST: $(cd "$STAGE/$DEST" && find . -type f | sed 's|^\./||' | sort | tr '\n' ' ')"
+    else
+        echo "publishing to $DEST: $(cd "$STAGE/$DEST" && ls | grep -v '\.sha256$' | tr '\n' ' ')"
+    fi
 fi
 
 # part of a development build: the files and the marker, no generator, no index (see --partial above)

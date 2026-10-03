@@ -1,0 +1,26 @@
+id: rpi
+title: "Raspberry Pi"
+version: v2.0.0-alpha1
+before_you_start:
+  - "You need: a Raspberry Pi and an SD card."
+sections:
+  - id: rpi-install
+    title: "Write the image and first boot"
+    minutes: 10
+    needs: "An SD card."
+    steps:
+      - id: rpi-install.1
+        do: "Write the image with the Imager."
+        expect: "The card is written."
+        status: ""
+        comment: ""
+  - id: rpi-store
+    title: "The Store"
+    minutes: 5
+    needs: "A network."
+    steps:
+      - id: rpi-store.1
+        do: "Open the Store."
+        expect: "The catalog loads."
+        status: ""
+        comment: ""
