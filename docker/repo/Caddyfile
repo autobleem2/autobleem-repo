@@ -11,10 +11,11 @@
         hide .*
     }
     encode gzip
-    # the machine-readable files, the splash and the download listing (the nightly list) change on every publish;
-    # versioned folders never do
-    @volatile path *.json /index.html / /repository/ /repository/index.html
-    @versioned not path *.json /index.html / /repository/ /repository/index.html
+    # what is replaced under the same name changes on every publish - the machine-readable files, every generated
+    # page (the splash, the download listing, the install and Store pages) and folder listing, the manuals' PDFs,
+    # the test plans: a browser checks them again after 5 minutes. Only the versioned folders never change.
+    @volatile path *.json *.html / */ /manuals/* /testplans/*
+    @versioned not path *.json *.html / */ /manuals/* /testplans/*
     header @volatile Cache-Control "max-age=300"
     header @versioned Cache-Control "max-age=86400"
     header -Server
