@@ -64,7 +64,7 @@ import sys
 from datetime import datetime, timezone
 
 # bump on every change: tools/repo_publish.sh only replaces the copy the repository runs with a newer one
-INDEX_VERSION = 48
+INDEX_VERSION = 49
 
 # the splash page's "Where we are" block updates itself (2026-10-03, the owner): the release rows come from
 # index_releases (splash_release_rows: the newest stable release, the newer pre-release, the next milestone) and
@@ -2319,7 +2319,7 @@ def render_splash(base_url, nightly=None, releases=None):
             "<header class=\"top\"><div class=\"bar\"><a class=\"brand\" href=\"/\"><img src=\"/assets/emblem.png\" "
             "srcset=\"/assets/emblem@2x.png 2x\" alt=\"\">AutoBleem 2</a><nav>\n"
             "<a href=\"/repository/\">Downloads</a><a href=\"/store/\">Store</a><a href=\"/repository/#manuals\">Manual</a>"
-            "<a href=\"https://github.com/autobleem2\">GitHub</a></nav></div></header>\n"
+            "%s<a href=\"https://github.com/autobleem2\">GitHub</a></nav></div></header>\n"
             "<main>\n"
             "  <img class=\"logo\" src=\"/assets/logo.png\" srcset=\"/assets/logo@2x.png 2x\" alt=\"AutoBleem 2\">\n"
             "  <h1>AutoBleem 2 is coming</h1>\n"
@@ -2336,7 +2336,8 @@ def render_splash(base_url, nightly=None, releases=None):
             "</main>\n"
             "<footer><p>AutoBleem 2 is free and open source. PlayStation is a trademark of Sony Interactive Entertainment; "
             "AutoBleem is not affiliated with Sony.</p></footer>\n"
-            "</body></html>\n" % (base_url, ICON_LINKS, PAGE_CSS, "\n      ".join(rows), support))
+            "</body></html>\n" % (base_url, ICON_LINKS, PAGE_CSS, "<a href=\"/testing/\">Testing</a>" if HAS_TESTING else "",
+               "\n      ".join(rows), support))
 
 
 #*******************************
@@ -2618,6 +2619,9 @@ function start(){
       S={claim:c.claim,answers:keep?S.answers:{},device:S.device||'',contact:S.contact||''}}
     S.section=c.section.id;S.expires=c.expires||'';save();render()
   }).catch(function(e){showError('Could not get a task: '+e.message,true)})}
+function stamp(d){function z(n){return(n<10?'0':'')+n}
+  return d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' '+
+    d.getFullYear()+', '+z(d.getHours())+':'+z(d.getMinutes())}
 function section(){for(var i=0;i<D.sections.length;i++)if(D.sections[i].id===S.section)return D.sections[i];return null}
 function counts(sec){var n=0;sec.steps.forEach(function(st){if(S.answers[st.id]&&S.answers[st.id].status)n++});return n}
 function progress(sec){var n=counts(sec),t=sec.steps.length;
@@ -2630,7 +2634,7 @@ function render(){
   label.appendChild(el('b',null,'Task claimed for you'));
   var when=S.expires?new Date(S.expires):null;
   label.appendChild(document.createTextNode(' - '+D.title+', '+sec.title+(sec.minutes?' (about '+sec.minutes+' min)':'')+
-    (when&&!isNaN(when)?'. Send it by '+when.toLocaleDateString()+' or it goes back to the pool.':'.')));
+    (when&&!isNaN(when)?'. Send it by '+stamp(when)+' or it goes back to the pool.':'.')));
   note.appendChild(label);box.appendChild(note);
   var form=el('form');form.noValidate=true;
   var panel=el('div','panel'),row=el('div','row2'),a=el('div'),b=el('div');
@@ -2667,10 +2671,10 @@ function render(){
   form.appendChild(el('p','privacy',D.privacy));
   var err=el('p','err hidden');form.appendChild(err);
   var sub=el('div','sub'),send=el('button','big','Send my results');send.type='submit';
-  var back=el('button','dl quiet','Give it back');back.type='button';sub.appendChild(send);sub.appendChild(back);
+  var back=el('a','dl quiet','Give it back');back.href='#';sub.appendChild(send);sub.appendChild(back);
   form.appendChild(sub);box.appendChild(form);progress(sec);
   function fail(msg){err.textContent=msg;err.classList.remove('hidden')}
-  back.onclick=function(){back.disabled=true;
+  back.onclick=function(ev){ev.preventDefault();if(back.dataset.busy)return;back.dataset.busy='1';
     api('/submit/claim',{platform:P,version:V,claim:S.claim,release:true}).catch(function(){}).then(function(){
       forget();location.href='/testing/'})};
   form.onsubmit=function(ev){ev.preventDefault();err.classList.add('hidden');
@@ -2684,7 +2688,7 @@ function render(){
     send.disabled=true;
     api('/submit/testplan',{platform:P,version:V,section:S.section,claim:S.claim,steps:steps,
       device:(S.device||'').trim(),contact:(S.contact||'').trim(),website:hi.value}).then(function(r){
-      forget();location.href='/testing/thanks.html?id='+encodeURIComponent(r.id)+'&p='+encodeURIComponent(P)
+      forget();location.href='/testing/thanks.html?id='+encodeURIComponent(r.id)+'&p='+encodeURIComponent(P)+'&k=result'
     }).catch(function(e){send.disabled=false;fail('Could not send: '+e.message)})}
 }
 start();
@@ -2732,6 +2736,8 @@ f.onsubmit=function(ev){ev.preventDefault();err.classList.add('hidden');
 THANKS_JS = """
 (function(){
 var id=qs('id'),p=qs('p');
+if(qs('k')==='result'){document.querySelector('.hero p').textContent='Thank you - we have your test result.';
+  $('keep').textContent='Keep this id. It is the only way to look your result up - there is no mailbox.'}
 if(/^[a-z0-9]{1,16}$/.test(id)){$('rid').textContent=id;$('st').href='/testing/status.html?id='+id}
 else{$('rid').classList.add('hidden');$('st').classList.add('hidden')}
 if(/^[a-z0-9]+$/.test(p))$('again').href='/testing/'+p+'.html';
@@ -2869,8 +2875,8 @@ def render_testing_report(info):
 
 
 def render_testing_thanks():
-    body = ("<div class=\"panel\" style=\"margin-top:1.4rem\"><h1>Received - thank you</h1><p>Keep this id. It is the "
-            "only way to look your result or report up - there is no mailbox.</p><div class=\"idbox\" id=\"rid\"></div>"
+    body = ("<div class=\"panel\" style=\"margin-top:1.4rem\"><h1>Received - thank you</h1><p id=\"keep\">Keep this id. It is the "
+            "only way to look your report up - there is no mailbox.</p><div class=\"idbox\" id=\"rid\"></div>"
             "<h3>What happens next</h3><ol class=\"next\"><li><b>We read it.</b> New reports are sorted once a day.</li>"
             "<li><b>We try to repeat it</b> on the newest development build. Only a problem we can repeat becomes a "
             "bug.</li><li><b>An idea</b> goes on the \"User ideas\" list and is read when we plan the next release.</li>"
