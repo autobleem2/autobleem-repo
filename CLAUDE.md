@@ -53,6 +53,18 @@ Counted: GET + 200 of a download file type; not HEAD/206/304/404. Stored: day, p
 What is counted, where it lives, how to switch it on and the tests: `admin/README.md`, "Download stats". The
 Caddy log settings must keep the filter - never add an IP or header field to the log.
 
+## The volunteer tester pages (2026-10-03)
+
+`testplans/<version>/<platform>.yaml` is what the hub's CI publishes (`repo_publish.sh testplans FILES...`: each file
+goes into the folder its own `version:` line names; the hub's folder is only a short name like `alpha1`). Every index
+run reads them (`index_testplans`, a small YAML-subset parser - the server has no PyYAML) and writes
+`testplans/index.json` (the contract is `intake/README.md`) and the **Testing** pages under `testing/`: `index.html`
+(a card per platform, the coverage hint from `/submit/coverage`), `<platform>.html` (the task page: the whole plan
+embedded as JSON, one section shown after `/submit/claim`), `report.html`, `thanks.html`, `status.html`. No
+`testplans/` folder = no pages. The pages use `page_head` and `PAGE_CSS` plus `TESTING_CSS` (from
+`mockups/testing/site.css`); the plan's texts only ever reach the page as JSON data and `textContent`. The top bar has
+no Testing link until alpha1 is released (the owner's decision). Tested in `tests/test_testing_pages.py`.
+
 ## The AutoBleem Store's catalog (2026-09-24)
 
 `store/<platform>/` (psc, rpi, rpi64, pcusb, win) is what the AutoBleem Store extension offers; its layout is
