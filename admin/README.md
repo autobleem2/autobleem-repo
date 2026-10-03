@@ -46,6 +46,27 @@ tooling copies to `~/admin-data/` on the build server; `docker/repo/compose.yml`
 (`ADMIN_FEED_DIR`) read-only into the admin service only. Caddy serves `/srv/repo` and nothing else, so the
 file is not reachable from the web. When it is missing or older than 60 minutes the tab says "no source" and why.
 
+## The tester tabs (Test results, Coverage, Reports)
+
+They read the tester portal's data directory (`AB_INTAKE_DIR`, default `/intake`; the layout is the contract in
+`intake/README.md`) and the site's `testplans/<version>/<platform>.yaml` (through `AB_REPO_DIR`). A missing
+directory shows "No data yet". Code: `app/testers.py`; tests `tests/test_testers.py`, sample data
+`tests/intake_data.py` (also what `tools/dev_server.py` shows).
+
+- **Test results** (`GET testresults?version=`): per platform, the number of results and a steps-by-outcome matrix
+  (OK / problem / N/A per step, plan order, grouped by section), the problem comments under their step, and each raw
+  result as a JSON download (`testresults/<platform>/<version>/<id>`). The version picker lists the versions that
+  have a plan, a result or a claim; the default is the highest by the site's version order.
+- **Coverage** (`GET coverage?version=`): sections x platforms, each cell `passes / problems` against
+  `target_passes` (settings.json, default 3; orange when under it) and the open / expired claims (`claim_hours`,
+  default 48, worked out on read).
+- **Reports** (`GET reports`, `reports/<id>/logs`): every issue report and every test result with a problem, newest
+  first, with its state (`decisions/<id>.json`, else `received`). The release team also gets **To reproduce**,
+  **Not a bug** (with a short reason), **Idea**, **Needs info** and **Record as bug** (a `BUG-N`):
+  `POST reports/<id>/decision {state, reason?, bug?}` writes `decisions/<id>.json` atomically and an audit entry
+  `report-decision`. This is the only thing the panel writes in the data directory, and nothing goes to the bug list
+  in the hub from here. `AB_INTAKE_DIR` therefore needs a writable volume.
+
 ## For scripts and Claude sessions
 
 The same API with your own GitHub token as the bearer - the same rules as the browser, recorded in the audit

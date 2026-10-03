@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # admin/, for `app` and `tests`
 
+from tests.intake_data import write_intake, write_plans  # noqa: E402  (the tester tabs' sample data)
 from tests.test_admin import FakeGitHub, run  # noqa: E402  (the same fake the test suite uses)
 
 from app import main  # noqa: E402
@@ -122,8 +123,10 @@ def main_():
         tmp = Path(tmp)
         site = tmp / "site"
         build_site_tree(site)
+        write_plans(str(site))
+        write_intake(str(tmp / "intake"))  # the tester tabs' sample data
         settings = Settings(repo_dir=str(site), data_dir=str(tmp / "data"), repos=["autobleem"],
-                            org="autobleem2", release_team="release-managers")
+                            org="autobleem2", release_team="release-managers", intake_dir=str(tmp / "intake"))
         gh = build_github()
         gh.members.add("alice")
         gh.managers.add("alice")
