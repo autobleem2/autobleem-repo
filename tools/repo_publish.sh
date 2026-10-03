@@ -51,7 +51,7 @@
 #                                                                                 build - the nightly channel; newest kept, an older one pruned)
 #   tools/repo_publish.sh manuals build_manuals/*/*.pdf                        -> manuals/ (the user manuals, one PDF
 #                                                                                 per language - tools/build_manuals.py)
-#   tools/repo_publish.sh testplans testing/alpha1/*.yaml                      -> testplans/<version>/ (the volunteer test
+#   tools/repo_publish.sh testplans testing/alpha1/*.yaml testing/alpha1/*.pdf -> testplans/<version>/ (the volunteer test
 #                                                                                 plans, from the hub's CI: each file goes
 #                                                                                 into the folder named by its own
 #                                                                                 `version:` line; the index then writes
@@ -310,7 +310,13 @@ if [ -n "$DEST" ]; then
         [ -f "$f" ] || { echo "not a file: $f" >&2; exit 1; }
         FDEST="$DEST"
         if [ "$KIND" = testplans ]; then
-            pv="$(plan_version "$f")" || exit 1
+            plan="$f"
+            case "$f" in
+                # a plan's printable PDF goes beside its yaml: the one passed in this call with the same name
+                *.pdf) plan="${f%.pdf}.yaml"
+                       case " $* " in *" $plan "*) ;; *) echo "no $(basename "$plan") in this call for $f" >&2; exit 1 ;; esac ;;
+            esac
+            pv="$(plan_version "$plan")" || exit 1
             FDEST="$DEST/$pv"
         fi
         mkdir -p "$STAGE/$FDEST"

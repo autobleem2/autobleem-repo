@@ -103,16 +103,36 @@ def test_pages_for_each_platform_and_the_fixed_pages(tmp_path):
         assert 'href="/testing/%s.html"' % p in landing and 'data-p="%s"' % p in landing
     assert "Give me a task (~10 min)" in landing and "/submit/coverage" in landing
     assert 'href="/testing/report.html"' in landing
-    # the Testing link stays out of the top bar until alpha1 is released
-    assert ">Testing<" not in landing.split("</header>")[0]
-    assert "printable PDF" not in landing
+    assert "Printable version" not in landing
 
 
 def test_printable_plan_is_linked_only_when_it_is_there(tmp_path):
     repo, _ = generate(tmp_path)
     (tmp_path / "testplans" / "v2.0.0-alpha1" / "psc.pdf").write_bytes(b"%PDF")
     info = repo_index.index_testplans(repo)
-    assert "/testplans/v2.0.0-alpha1/psc.pdf" in repo_index.render_testing_index(info)
+    landing = repo_index.render_testing_index(info)
+    assert "/testplans/v2.0.0-alpha1/psc.pdf" in landing and "Printable version" in landing
+
+
+def test_the_bar_links_testing_only_when_the_site_has_plans(tmp_path):
+    bar = lambda: repo_index.page_head("t", "x").split("</header>")[0]  # noqa: E731
+    assert repo_index.index_testplans(str(tmp_path)) is None
+    assert "Testing" not in bar()
+    repo, _ = generate(tmp_path)
+    assert '<a href="/testing/">Testing</a><a href="https://github.com/autobleem2">GitHub</a>' in bar()
+    assert '<a href="/testing/">Testing</a>' in read(repo, "testing", "psc.html")
+    # a tree without plans after one with them: the link is gone again
+    assert repo_index.index_testplans(str(tmp_path / "empty")) is None
+    assert "Testing" not in bar()
+
+
+def test_main_puts_the_testing_link_on_every_page_of_a_site_with_plans(tmp_path):
+    make_repo(tmp_path)
+    out = subprocess.run([sys.executable, os.path.join(TOOLS, "repo_index.py"), str(tmp_path)],
+                         capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    for name in (("repository", "index.html"), ("repository", "rpi-install.html")):
+        assert '<a href="/testing/">Testing</a>' in read(str(tmp_path), *name)
 
 
 def test_task_page_embeds_every_section_escaped(tmp_path):
@@ -196,7 +216,7 @@ def test_publish_kind_testplans_files_each_plan_under_its_own_version_and_indexe
     site = tmp_path / "site"
     assert (site / "testplans" / "v2.0.0-alpha1" / "psc.yaml").is_file()
     assert not (site / "testplans" / "alpha1").exists()
-    assert not list((site / "testplans").rglob("*.sha256"))
+    assert not list((site / "testplans").rglob("*.yaml.sha256"))
     assert json.loads((site / "testplans" / "index.json").read_text())["current"] == "v2.0.0-alpha1"
     assert (site / "testing" / "psc.html").is_file()
     # only <platform>.yaml files with a usable version: line are accepted
@@ -206,3 +226,27 @@ def test_publish_kind_testplans_files_each_plan_under_its_own_version_and_indexe
     noversion = hub / "win.yaml"
     noversion.write_text("id: win\n", encoding="utf-8")
     assert run_publish(tmp_path, "testplans", str(noversion)).returncode != 0
+
+
+def test_publish_kind_testplans_files_a_pdf_beside_its_yaml_and_refuses_a_lone_pdf(tmp_path):
+    import shutil
+    if not (shutil.which("bash") and shutil.which("git") and shutil.which("python3")):
+        import pytest
+        pytest.skip("needs bash, git and python3 (a CI/Linux job)")
+    hub = tmp_path / "hub" / "testing" / "alpha1"
+    hub.mkdir(parents=True)
+    plan, pdf, lone = hub / "psc.yaml", hub / "psc.pdf", hub / "rpi.pdf"
+    plan.write_text(PLAN % {"version": "v2.0.0-alpha1"}, encoding="utf-8")
+    pdf.write_bytes(b"%PDF-1.4")
+    lone.write_bytes(b"%PDF-1.4")
+    # a pdf whose yaml is not in the call is refused, and nothing is published
+    out = run_publish(tmp_path, "testplans", str(plan), str(lone))
+    assert out.returncode != 0 and "rpi.yaml" in out.stderr
+    assert not (tmp_path / "site" / "testplans").exists()
+    out = run_publish(tmp_path, "testplans", str(plan), str(pdf))
+    assert out.returncode == 0, out.stderr + out.stdout
+    folder = tmp_path / "site" / "testplans" / "v2.0.0-alpha1"
+    assert (folder / "psc.yaml").is_file() and (folder / "psc.pdf").read_bytes() == b"%PDF-1.4"
+    assert not (tmp_path / "site" / "testplans" / "alpha1").exists()
+    # the landing page then links it by itself
+    assert "Printable version" in (tmp_path / "site" / "testing" / "index.html").read_text(encoding="utf-8")
