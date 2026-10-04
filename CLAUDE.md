@@ -28,7 +28,9 @@ and logos), then the page.
 
 - Commit a page change to `develop` (and `master`) **before** publishing: the generator is three-way merged
   with the server's copy (`tools/repo_index_merge.py`), never copied over it. Publish from a git checkout.
-- From Windows run it in the MSYS2 shell (Git Bash has no rsync):
+- From Windows Git Bash or the MSYS2 shell (Git Bash has no rsync: the script then runs ssh and rsync from
+  MSYS2's bin folder by itself, and stops non-zero with a message when there is no rsync or an upload fails;
+  `MSYS2_BIN` overrides the folder):
   `bash tools/repo_publish.sh index` just regenerates the pages. It finds a Windows Python by itself (an MSYS2
   login shell drops the Windows PATH: `find_python` looks under %LOCALAPPDATA%); `PYTHON=<path>` overrides it.
 - A withdrawn release goes with `repo_publish.sh withdraw version <v>` (always `--dry-run` first): every folder of

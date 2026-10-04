@@ -134,6 +134,37 @@ find_python() {
 }
 PY="$(find_python)"
 
+# The upload needs rsync and an ssh that works with it. Git Bash on Windows has no rsync (and its own ssh does not
+# match MSYS2's rsync), so there ssh and rsync run from MSYS2's bin dir - for those two calls only (MSYS2's mktemp,
+# python and tar would hand the rest of the script paths Windows programs cannot read). Without any rsync the publish
+# stops here, non-zero and with a message, before anything is staged or sent (it used to run on into "rsync: command
+# not found").
+MSYS_TOOLS=""
+use_transport() {
+    [ "$LOCAL" -eq 1 ] && return 0
+    local m="${MSYS2_BIN:-/c/msys64/usr/bin}"
+    if ! command -v rsync >/dev/null 2>&1; then
+        if [ -x "$m/rsync.exe" ] || [ -x "$m/rsync" ]; then
+            MSYS_TOOLS="$m"
+        else
+            echo "repo_publish.sh: no rsync on PATH - install rsync (Windows: MSYS2's, $m/rsync.exe). Nothing was published." >&2
+            exit 1
+        fi
+    fi
+    command -v ssh >/dev/null 2>&1 || [ -n "$MSYS_TOOLS" ] || { echo "repo_publish.sh: no ssh on PATH. Nothing was published." >&2; exit 1; }
+}
+ssh() { if [ -n "$MSYS_TOOLS" ]; then PATH="$MSYS_TOOLS:$PATH" command ssh "$@"; else command ssh "$@"; fi; }
+upload() { # upload STAGE-DIR
+    local src="$1" rc=0
+    if [ -n "$MSYS_TOOLS" ]; then
+        src="$(cygpath -u "$1")"   # /c/Users/... - MSYS2's rsync reads "C:/..." as a host name
+        PATH="$MSYS_TOOLS:$PATH" command rsync -rlt --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r "$src"/ "$REPO_HOST:$REPO_DIR/" || rc=$?
+    else
+        rsync -rlt --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r "$src"/ "$REPO_HOST:$REPO_DIR/" || rc=$?
+    fi
+    [ "$rc" -eq 0 ] || { echo "repo_publish.sh: the upload to $REPO_HOST:$REPO_DIR failed (rsync exit $rc). Nothing was published." >&2; exit 1; }
+}
+
 usage() { sed -n '2,92p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 withdraw_usage() {
@@ -277,6 +308,7 @@ if [ "$PARTIAL" -eq 1 ] && [ "$KIND" != nightly ] && [ "$KIND" != preview ]; the
     echo "--partial is for a development build (nightly, preview) only" >&2
     exit 1
 fi
+use_transport
 
 # a scratch dir with the files to upload and their sidecars, so one rsync does it
 STAGE="$(mktemp -d)"
@@ -341,7 +373,7 @@ if [ "$PARTIAL" -eq 1 ]; then
         cp -r "$STAGE"/. "$REPO_DIR"/
         if [ "$(id -u)" -eq 0 ]; then chown -R "$(stat -c %u:%g "$REPO_DIR")" "$REPO_DIR"; fi
     else
-        rsync -rlt --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r "$STAGE"/ "$REPO_HOST:$REPO_DIR/"
+        upload "$STAGE"
     fi
     echo "staged (not indexed until the build's last publish): $AB_REPO_URL/$DEST/"
     exit 0
@@ -405,7 +437,7 @@ if [ "$LOCAL" -eq 1 ]; then
     if [ "$(id -u)" -eq 0 ]; then chown -R "$(stat -c %u:%g "$REPO_DIR")" "$REPO_DIR"; fi
     [ "$rc" -eq 0 ] || exit "$rc"
 else
-    rsync -rlt --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r "$STAGE"/ "$REPO_HOST:$REPO_DIR/"
-    ssh "$REPO_HOST" "$(remote_index)"
+    upload "$STAGE"
+    ssh "$REPO_HOST" "$(remote_index)"         || { echo "repo_publish.sh: the files are on $REPO_HOST but the index run there failed (exit $?)." >&2; exit 1; }
 fi
 echo "done: $AB_REPO_URL/${DEST:+$DEST/}"
