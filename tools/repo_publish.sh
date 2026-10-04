@@ -157,7 +157,11 @@ ssh() { if [ -n "$MSYS_TOOLS" ]; then PATH="$MSYS_TOOLS:$PATH" command ssh "$@";
 upload() { # upload STAGE-DIR
     local src="$1" rc=0
     if [ -n "$MSYS_TOOLS" ]; then
-        src="$(cygpath -u "$1")"   # /c/Users/... - MSYS2's rsync reads "C:/..." as a host name
+        # /c/Users/... - MSYS2's rsync reads "C:/..." as a host name, and Git Bash's own /tmp is not MSYS2's /tmp
+        # (cygpath -u keeps "/tmp/..." there), so the drive form is built from the Windows path
+        local w
+        w="$(cygpath -m "$1")"
+        src="/$(printf '%s' "${w:0:1}" | tr 'A-Z' 'a-z')${w:2}"
         PATH="$MSYS_TOOLS:$PATH" command rsync -rlt --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r "$src"/ "$REPO_HOST:$REPO_DIR/" || rc=$?
     else
         rsync -rlt --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r "$src"/ "$REPO_HOST:$REPO_DIR/" || rc=$?
