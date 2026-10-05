@@ -109,7 +109,9 @@ set by the launcher's `docs/store-plan.md`.
   `repo_publish.sh pe-source <id> FILES` (refuses any name that is not `<id>-*-source.tar.gz`); pe_ports' `site` job
   does it on a v* tag. **Kept at least 3 years after the item's last release**: nothing prunes it - the index only
   reads `store/`, and `cleanup.yml`/`server_cleanup.sh` never name it (`tests/test_pe_site.py` guards both). Delete
-  by hand only after the 3 years.
+  by hand only after the 3 years. `pe-source` and `deps` never replace a file in place: the same bytes again is a
+  no-op, other bytes under the same name stop the publish (`no_overwrite`). pe_ports' `site` job also publishes each
+  release's `.mod`, icon and `pe/<id>` descriptor with `store psc` (its `tools/store_item.py`).
 - **`deps/<name>/`** holds third-party build dependencies our builds fetch, pinned by sha256 (`deps/boost/
   boost_1_74_0.tar.bz2`, 109 MB, for Commander Genius): `repo_publish.sh deps <name> FILES`. Not listed on any page,
   never pruned, a file is never replaced in place. (`mirror/` is the older folder for the same idea: an App's game
