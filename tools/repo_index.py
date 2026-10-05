@@ -1585,7 +1585,7 @@ def file_row(label, f, version="", cls="", note="", badge="", icon=""):
     type, the whole name on hover - the names carry the version again and wrapped mid-word in a narrow column"""
     e = html.escape
     when = f.get("uploaded", "")
-    m = re.search(r"\.(tar\.gz|img\.xz|zip|exe|txt|db|pdf|chd|pbp|7z)$", f["name"])
+    m = re.search(r"\.(tar\.gz|img\.xz|zip|exe|txt|db|pdf|chd|pbp|7z|mod)$", f["name"])
     return ("<tr><td class=\"what\">%s%s%s%s</td><td>%s</td><td class=\"file\"><a href=\"%s\" title=\"%s\">%s</a></td>"
             "<td class=\"size\">%s</td><td class=\"when\" title=\"%s\">%s</td></tr>" % (
                 "<img class=\"icon\" src=\"%s\" alt=\"\" loading=\"lazy\">" % e(icon) if icon else "",
@@ -1919,11 +1919,18 @@ def render_store(base_url, store, extension=None, lanshare=None):
                         "(the data partition on a Raspberry Pi or the PC stick): it adds "
                         "<code>Extensions/store/</code>. Then <b>L2+R2 &rarr; Extensions</b>.</p>%s</div>"
                         % files_table(rows))
-        for kind, heading in (("app", "Apps"), ("ps1", "Games")):
+        for kind, heading in (("app", "Apps"), ("pe", "PE Apps"), ("ps1", "Games")):
             rows = []
             for i in sorted((i for i in items if i["kind"] == kind), key=lambda i: i["title"].lower()):
                 note = e(i.get("description", ""))
                 credits = " &middot; ".join(e(x) for x in (i.get("author"), i.get("licence")) if x)
+                if kind == "pe":
+                    # a PE App: its licence in words, and the link to the source it was built from (GPL items)
+                    credits = " &middot; ".join(
+                        x for x in (e(i.get("author", "")),
+                                    "Licence: " + e(i["licence"]) if i.get("licence") else "",
+                                    "<a href=\"%s\">Source code</a>" % e(i["source_url"]) if i.get("source_url")
+                                    else "") if x)
                 if credits:
                     note += ("<br>" if note else "") + credits
                 for n, f in enumerate(i["files"]):
@@ -1931,7 +1938,13 @@ def render_store(base_url, store, extension=None, lanshare=None):
                     rows.append(file_row(label, f, i.get("version", "") if n == 0 else "", "rel",
                                          note if n == 0 else "", icon=i.get("image", "") if n == 0 else ""))
             if rows:
-                body.append("<div class=\"panel\"><h2>%s</h2>%s</div>" % (heading, files_table(rows)))
+                intro = ""
+                if kind == "pe":
+                    intro = ("<p>Programs built from open source for the PlayStation Classic. The Store's <b>PE "
+                             "Apps</b> tab installs them with one press; to install one by hand, copy its "
+                             "<code>.mod</code> file into the <code>Mods/</code> folder of the stick. Each one "
+                             "links the source it was built from.</p>")
+                body.append("<div class=\"panel\"><h2>%s</h2>%s%s</div>" % (heading, intro, files_table(rows)))
         if not items:
             body.append("<div class=\"panel\"><p>%s</p></div>" % ("No Apps or games for this system yet." if own
                                                                   else "Nothing for this system yet."))

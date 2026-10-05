@@ -99,6 +99,22 @@ set by the launcher's `docs/store-plan.md`.
   the Linux setup guide folded under Build inputs; LAN Share (pc-tools' Windows app, `extensions/lanshare/`,
   `lanshare-windows-x86_64-<v>.zip`) is listed there too. Tested in `tests/test_extension_index.py`.
 
+### PE Apps: the page, the source mirror, the dependency mirror (APPS-8, 2026-10-05)
+
+- **The page**: `render_store` has a **PE Apps** panel between Apps and Games (kind `pe`): name, version pill,
+  "Licence: ...", a **Source code** link to the item's `source_url`, and the `.mod` as a download button (for a
+  manual copy into the stick's `Mods/`). The 2020 environment's name is never on the page.
+- **`source/<id>/`** holds the GPL source archives `<id>-<version>-source.tar.gz` of pe_ports' releases - exactly the
+  address `tools/mkmod.py` writes into SOURCE.txt (`AB_SOURCE_BASE` = `<site>/source`). Published with
+  `repo_publish.sh pe-source <id> FILES` (refuses any name that is not `<id>-*-source.tar.gz`); pe_ports' `site` job
+  does it on a v* tag. **Kept at least 3 years after the item's last release**: nothing prunes it - the index only
+  reads `store/`, and `cleanup.yml`/`server_cleanup.sh` never name it (`tests/test_pe_site.py` guards both). Delete
+  by hand only after the 3 years.
+- **`deps/<name>/`** holds third-party build dependencies our builds fetch, pinned by sha256 (`deps/boost/
+  boost_1_74_0.tar.bz2`, 109 MB, for Commander Genius): `repo_publish.sh deps <name> FILES`. Not listed on any page,
+  never pruned, a file is never replaced in place. (`mirror/` is the older folder for the same idea: an App's game
+  data.)
+
 ## The PS1 emulators' channels (2026-09-27, RELEASE-4)
 
 `emu/<name>/` (`pcsx-ab`, `pcsx-abnxt`) has three channels now, like every other tab: a v* tag build under

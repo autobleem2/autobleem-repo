@@ -2,6 +2,8 @@
 # containers, stale build cache - then the page regenerated, which also prunes the site's old nightlies down
 # to NIGHTLY_KEEP (tools/repo_index.py). Before the nightly assembly (autobleem-appliance, 03:17 UTC), so it
 # begin with the room. Self-hosted: it is that machine's Docker. Gated by AB_CI_ENABLED.
+# It never deletes in the site's tree except through that index run, and the index leaves source/ (the PE Apps'
+# GPL source archives, kept at least 3 years) and deps/ (mirrored build dependencies) alone.
 name: cleanup
 
 on:

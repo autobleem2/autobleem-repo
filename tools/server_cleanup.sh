@@ -8,6 +8,9 @@
 #     autobleem-build image is never in that list, whatever its age.
 # Docker refuses to remove an image a container still uses, so a running build is never touched. The site's
 # old nightlies are not this script's: repo_index.py prunes them on every publish (NIGHTLY_KEEP).
+# The site's tree is not this script's at all - and source/ (the GPL source archives of the PE Apps, kept at least
+# 3 years after an item's last release) and deps/ (the mirrored build dependencies) must never be added to anything
+# that deletes: tests/test_pe_site.py fails if the cleanup ever names them.
 # Needs the Docker socket - .github/workflows/cleanup.yml runs it on the self-hosted runner every night.
 #
 #   tools/server_cleanup.sh [--dry-run]

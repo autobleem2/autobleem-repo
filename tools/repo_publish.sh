@@ -60,6 +60,13 @@
 #   tools/repo_publish.sh mirror opentyrian tyrian21.zip                       -> mirror/opentyrian/ (third-party files a
 #                                                                                 build fetches - an App's freeware game
 #                                                                                 data - kept as they are, never indexed)
+#   tools/repo_publish.sh pe-source commanderkeen commanderkeen-2.4.0-1-source.tar.gz
+#                                                                              -> source/commanderkeen/ (the GPL source mirror of a PE
+#                                                                                 App, from pe_ports' release: kept at least 3 years
+#                                                                                 after the item's last release - nothing prunes it)
+#   tools/repo_publish.sh deps boost boost_1_74_0.tar.bz2                      -> deps/boost/ (third-party build dependencies our
+#                                                                                 builds fetch, pinned by sha256: never listed, never
+#                                                                                 pruned, never replaced in place)
 #   tools/repo_publish.sh assets                                               -> assets/ (tools/repo_assets.py stages
 #                                                                                 tools/site-assets/: the page's picture,
 #                                                                                 logo, emblem, icon, font)
@@ -169,7 +176,7 @@ upload() { # upload STAGE-DIR
     [ "$rc" -eq 0 ] || { echo "repo_publish.sh: the upload to $REPO_HOST:$REPO_DIR failed (rsync exit $rc). Nothing was published." >&2; exit 1; }
 }
 
-usage() { sed -n '2,92p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,100p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 withdraw_usage() {
     cat <<'EOF' >&2
@@ -274,6 +281,19 @@ done
 [ $# -ge 1 ] || usage 1
 KIND="$1"; shift
 
+# the source mirror of a PE App (source/<id>/): <id>-<version>-source.tar.gz only - the address mkmod.py writes into
+# the package's SOURCE.txt (AB_SOURCE_BASE/<id>/<id>-<version>-source.tar.gz) must be exactly where the file lands
+pe_source_check() {
+    local id="$1" f; shift
+    case "$id" in ""|*[!a-z0-9_-]*|-*) echo "not a PE App id: $id" >&2; return 1 ;; esac
+    for f in "$@"; do
+        case "$(basename "$f")" in
+            "$id"-*-source.tar.gz) ;;
+            *) echo "not a source archive of $id (<id>-<version>-source.tar.gz): $f" >&2; return 1 ;;
+        esac
+    done
+}
+
 # where the files of this kind land, relative to the repository root
 case "$KIND" in
     release)   [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="releases/$VERSION" ;;
@@ -304,6 +324,8 @@ case "$KIND" in
     testplans) [ $# -ge 1 ] || usage 1; DEST="testplans" ;;
     db)        [ $# -ge 1 ] || usage 1; DEST="db" ;;
     mirror)    [ $# -ge 2 ] || usage 1; NAME="$1"; shift; DEST="mirror/$NAME" ;;
+    pe-source) [ $# -ge 2 ] || usage 1; NAME="$1"; shift; pe_source_check "$NAME" "$@" || exit 1; DEST="source/$NAME" ;;
+    deps)      [ $# -ge 2 ] || usage 1; NAME="$1"; shift; DEST="deps/$NAME" ;;
     assets)    DEST="assets" ;;
     index)     DEST="" ;;
     *)         echo "unknown kind: $KIND" >&2; usage 1 ;;
