@@ -580,6 +580,10 @@ def index_win(repo, base_url):
     return out
 
 
+# the corresponding-source archive a GPL item keeps on the site (source/<id>/): never one of an item's files
+SOURCE_ARCHIVE_RE = re.compile(r"-source\.tar\.(gz|xz|bz2)$", re.IGNORECASE)
+
+
 def index_store(repo, base_url, pages=None):
     """store/<platform>/: the AutoBleem Store's catalog (the launcher's docs/store-plan.md), one per platform.
 
@@ -590,6 +594,11 @@ def index_store(repo, base_url, pages=None):
     and catalog.json lists them with each file's size, sha256 and url (the Store refuses a download that does
     not match). A descriptor that names a file which is not there, or lacks an id, a kind or a title, is left
     out and said so. A file no descriptor names any more (an App's previous version) is pruned.
+
+    kind "pe" is a PE App (the Store's "PE Apps" tab): files is the one .mod, which the Store puts in Mods/. Its
+    descriptor also carries "source_url", the address of the corresponding source archive (GPL items; shown in the
+    item's details, an http(s) address, passed through to catalog.json). The source archive itself is never one of
+    the files (it would land on the stick): a descriptor naming a "*-source.tar.gz" among its files is left out.
 
     pages, when given, gets each platform's items as the Store's page shows them (render_store): the catalog's
     fields plus each file's upload time."""
@@ -616,6 +625,11 @@ def index_store(repo, base_url, pages=None):
                 print("store/%s/%s: no id, kind or title - left out" % (platform, name))
                 continue
             files, missing = [], []
+            source_files = [f.get("name") for f in d.get("files") or [] if SOURCE_ARCHIVE_RE.search(f.get("name") or "")]
+            if source_files:
+                print("store/%s/%s: %s is a source archive, not a file of the item - left out" % (
+                    platform, name, source_files[0]))
+                continue
             for f in d.get("files") or []:
                 path = os.path.join(folder, f.get("name") or "")
                 if not f.get("name") or not os.path.isfile(path):
@@ -633,6 +647,9 @@ def index_store(repo, base_url, pages=None):
                 continue
             item = {k: d[k] for k in ("id", "kind", "title", "version", "author", "licence", "description",
                                       "serial", "requires") if d.get(k)}
+            source_url = d.get("source_url")
+            if isinstance(source_url, str) and source_url.startswith(("http://", "https://")):
+                item["source_url"] = source_url
             image = d.get("image")
             if image and os.path.isfile(os.path.join(folder, image)):
                 item["image"] = base_url + "/store/%s/%s" % (platform, image)

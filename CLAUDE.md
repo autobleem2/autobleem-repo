@@ -75,7 +75,11 @@ version". Tested in `tests/test_testing_pages.py`.
 set by the launcher's `docs/store-plan.md`.
 - **Publishing**: `repo_publish.sh store <platform> FILES...` puts the files there. Each item is an
   `<id>.item.json` descriptor (id, kind, title, version, author, licence, description, image, files by name
-  with an optional disc, requires) next to its files.
+  with an optional disc, requires, and `source_url`) next to its files. **kind `pe`** is a PE App (the Store's
+  "PE Apps" tab, APPS-8): `files` is the one `.mod`, `licence` and `source_url` (the address of the source archive on
+  our site, `source/<id>/...`; an http(s) address, passed into `catalog.json`) are shown in the item's details. A
+  source archive (`*-source.tar.gz`) is **never** in `files` - it would land on the stick - so a descriptor naming one
+  is left out and said so.
 - **Indexing**: `index_store()` writes `catalog.json` with every file's size, sha256 and url. It leaves out a
   descriptor whose files are not all there, and prunes a file no descriptor names (an App's previous
   version). Tested in `tests/test_store_index.py`.

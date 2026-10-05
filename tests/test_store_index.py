@@ -60,6 +60,32 @@ def test_catalog_from_descriptors_with_sums_urls_and_pruning():
         assert os.path.exists(os.path.join(psc, "opentyrian.png"))
 
 
+def test_pe_item_carries_licence_and_source_url_and_never_the_source_archive():
+    with tempfile.TemporaryDirectory() as repo:
+        psc = os.path.join(repo, "store", "psc")
+        write(os.path.join(psc, "openlara-0.9.0-1.mod"), b"!<arch>\nmod bytes")
+        write(os.path.join(psc, "openlara-0.9.0-1-source.tar.gz"), b"source bytes")
+        item(os.path.join(psc, "openlara.item.json"), id="pe/openlara", kind="pe", title="OpenLara",
+             version="0.9.0-1", licence="BSD-2-Clause",
+             source_url="https://site/source/openlara/openlara-0.9.0-1-source.tar.gz",
+             files=[{"name": "openlara-0.9.0-1.mod"}])
+        item(os.path.join(psc, "badlink.item.json"), id="pe/badlink", kind="pe", title="Bad link",
+             source_url="javascript:alert(1)", files=[{"name": "openlara-0.9.0-1.mod"}])
+        # a descriptor that lists the source archive among the files is left out whole
+        item(os.path.join(psc, "withsource.item.json"), id="pe/withsource", kind="pe", title="With source",
+             files=[{"name": "openlara-0.9.0-1.mod"}, {"name": "openlara-0.9.0-1-source.tar.gz"}])
+
+        repo_index.index_store(repo, "https://site")
+        with open(os.path.join(psc, "catalog.json"), encoding="utf-8") as f:
+            by_id = {i["id"]: i for i in json.load(f)["items"]}
+        assert set(by_id) == {"pe/openlara", "pe/badlink"}
+        pe = by_id["pe/openlara"]
+        assert pe["kind"] == "pe" and pe["licence"] == "BSD-2-Clause"
+        assert pe["source_url"] == "https://site/source/openlara/openlara-0.9.0-1-source.tar.gz"
+        assert [f["name"] for f in pe["files"]] == ["openlara-0.9.0-1.mod"]
+        assert "source_url" not in by_id["pe/badlink"]  # not an http(s) address: dropped
+
+
 def test_store_page_shows_each_system_with_its_items():
     with tempfile.TemporaryDirectory() as repo:
         rpi = os.path.join(repo, "store", "rpi")
