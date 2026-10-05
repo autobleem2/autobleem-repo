@@ -362,6 +362,24 @@ plan_version() {
     echo "$v"
 }
 
+# source/ (the GPL source archives, kept 3 years) and deps/ (pinned build dependencies) are never replaced in place:
+# a file of the same name already on the site must be byte-identical (a repeat publish is then a no-op), else the
+# publish stops before anything is uploaded
+no_overwrite() { # no_overwrite FILE DEST-DIR
+    local f="$1" dir="$2" name mine theirs
+    name="$(basename "$f")"
+    mine="$(sha256sum "$f" | cut -d' ' -f1)"
+    if [ "$LOCAL" -eq 1 ]; then
+        theirs="$([ -f "$REPO_DIR/$dir/$name" ] && sha256sum "$REPO_DIR/$dir/$name" | cut -d' ' -f1 || true)"
+    else
+        theirs="$(ssh "$REPO_HOST" "[ -f '$REPO_DIR/$dir/$name' ] && sha256sum '$REPO_DIR/$dir/$name' || true" </dev/null | cut -d' ' -f1)"
+    fi
+    if [ -n "$theirs" ] && [ "$theirs" != "$mine" ]; then
+        echo "not published: $dir/$name is on the site already with other contents ($theirs, yours $mine) - these files are never replaced; a new version is a new file name" >&2
+        return 1
+    fi
+}
+
 if [ -n "$DEST" ]; then
     mkdir -p "$STAGE/$DEST"
     for f in "$@"; do
@@ -377,6 +395,7 @@ if [ -n "$DEST" ]; then
             pv="$(plan_version "$plan")" || exit 1
             FDEST="$DEST/$pv"
         fi
+        if [ "$KIND" = pe-source ] || [ "$KIND" = deps ]; then no_overwrite "$f" "$FDEST" || exit 1; fi
         mkdir -p "$STAGE/$FDEST"
         cp "$f" "$STAGE/$FDEST/"
         case "$f" in

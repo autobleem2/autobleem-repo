@@ -158,3 +158,51 @@ def test_publish_pe_source_lands_where_the_source_txt_points_and_deps_in_deps():
         assert r.returncode != 0 and "not a source archive" in r.stderr
         r = publish(repo, "pe-source", "openjazz", archive)
         assert r.returncode != 0
+
+
+@pytest.mark.skipif(not BASH, reason="needs bash")
+def test_source_and_deps_are_never_replaced_in_place():
+    with tempfile.TemporaryDirectory() as work, tempfile.TemporaryDirectory() as repo:
+        archive = os.path.join(work, "commanderkeen-2.4.0-1-source.tar.gz")
+        boost = os.path.join(work, "boost_1_74_0.tar.bz2")
+        write(archive, b"the archive")
+        write(boost, b"boost")
+        assert publish(repo, "pe-source", "commanderkeen", archive).returncode == 0
+        assert publish(repo, "deps", "boost", boost).returncode == 0
+        # the same bytes again: fine (a re-run of a release job)
+        assert publish(repo, "pe-source", "commanderkeen", archive).returncode == 0
+        assert publish(repo, "deps", "boost", boost).returncode == 0
+        # other bytes under the same name: refused, the site's file untouched
+        write(archive, b"another archive")
+        write(boost, b"other boost")
+        r = publish(repo, "pe-source", "commanderkeen", archive)
+        assert r.returncode != 0 and "never replaced" in r.stderr
+        r = publish(repo, "deps", "boost", boost)
+        assert r.returncode != 0 and "never replaced" in r.stderr
+        with open(os.path.join(repo, "source", "commanderkeen", os.path.basename(archive)), "rb") as f:
+            assert f.read() == b"the archive"
+        with open(os.path.join(repo, "deps", "boost", "boost_1_74_0.tar.bz2"), "rb") as f:
+            assert f.read() == b"boost"
+
+
+@pytest.mark.skipif(not BASH, reason="needs bash")
+def test_store_publish_of_a_pe_item_reaches_the_catalog_and_the_page():
+    """what pe_ports' site job does after pe-source: `store psc` with the .mod, the descriptor and the icon"""
+    with tempfile.TemporaryDirectory() as work, tempfile.TemporaryDirectory() as repo:
+        files = [os.path.join(work, n) for n in ("commanderkeen-2.4.0-1.mod", "commanderkeen.png",
+                                                 "commanderkeen.item.json")]
+        write(files[0], b"mod bytes")
+        write(files[1], b"png")
+        write(files[2], json.dumps({
+            "id": "pe/commanderkeen", "kind": "pe", "title": "Commander Genius (Keen 1)", "version": "2.4.0-1",
+            "licence": "GPL-2.0", "source_url": SOURCE_URL, "image": "commanderkeen.png",
+            "files": [{"name": "commanderkeen-2.4.0-1.mod"}]}))
+        r = publish(repo, "store", "psc", *files)
+        assert r.returncode == 0, r.stderr
+        with open(os.path.join(repo, "store", "psc", "catalog.json"), encoding="utf-8") as f:
+            item = json.load(f)["items"][0]
+        assert item["kind"] == "pe" and item["source_url"] == SOURCE_URL
+        assert item["files"][0]["size"] == 9 and len(item["files"][0]["sha256"]) == 64
+        with open(os.path.join(repo, "store", "index.html"), encoding="utf-8") as f:
+            page = f.read()
+        assert "PE Apps</h2>" in page and "Source code" in page
