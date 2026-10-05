@@ -116,6 +116,15 @@ longer developed (the owner's decision), so it has no nightly kind and its CI pu
 `emu/pcsx-ab/nightly/` too if one were ever published there by hand. The PS1 emulators tab on the download
 page draws the same three pills (`rel`/`pre`/`dev`) as every other tab. Tested in `tests/test_pcsx_index.py`.
 
+## The PSC stick zips (PLATFORM-21)
+
+A release and a development build carry `autobleem-psc-<v>-base.zip` (the stick without RetroArch) and
+`autobleem-psc-<v>-full.zip` (with RetroArch and its cores), made by autobleem-appliance's `tools/psc_zips.py`; neither has
+a BIOS file. They are the package kinds `psc-base` and `psc-full` (before the old single-zip `psc` in `PACKAGE_KINDS`;
+`of_version` accepts the `-base`/`-full` suffix) and sit in the PlayStation Classic Install table beside the
+installer, each with a one-line note. `unstable.json` leaves them out, like `psc` - the console's update reads the
+`psc-fs` tarball only. Tested in `tests/test_psc_zips_page.py`.
+
 ## The pages' look and structure - the rules (the owner's, 2026-09-23)
 
 The owner approved the 2026-09-23 redesign ("look and feel of the page is great"). **Keep it; change it only

@@ -64,7 +64,7 @@ import sys
 from datetime import datetime, timezone
 
 # bump on every change: tools/repo_publish.sh only replaces the copy the repository runs with a newer one
-INDEX_VERSION = 49
+INDEX_VERSION = 50
 
 # the splash page's "Where we are" block updates itself (2026-10-03, the owner): the release rows come from
 # index_releases (splash_release_rows: the newest stable release, the newer pre-release, the next milestone) and
@@ -84,7 +84,13 @@ KOFI_URL = "https://ko-fi.com/autobleem"
 PACKAGE_KINDS = [
     ("installer", re.compile(r"^AutoBleemInstaller-.*\.zip$"),
      "PlayStation Classic installer for Windows (downloads the stick's file system from the channel picked in it)"),
-    ("psc", re.compile(r"^autobleem-psc-.*\.zip$"), "PlayStation Classic (USB stick zip)"),
+    # the stick as two zips (PLATFORM-21): -base without RetroArch, -full with RetroArch and its cores; neither has a
+    # BIOS file. Before "psc" - the first kind a name matches is its kind
+    ("psc-base", re.compile(r"^autobleem-psc-.*-base\.zip$"),
+     "PlayStation Classic, the stick as a zip without RetroArch (smaller; no BIOS files)"),
+    ("psc-full", re.compile(r"^autobleem-psc-.*-full\.zip$"),
+     "PlayStation Classic, the stick as a zip with RetroArch and its cores (no BIOS files)"),
+    ("psc", re.compile(r"^autobleem-psc-(?!.*-(base|full)\.zip$).*\.zip$"), "PlayStation Classic (USB stick zip)"),
     ("psc-fs", re.compile(r"^autobleem-psc-.*\.tar\.gz$"),
      "PlayStation Classic, the stick's file system for the installer (no RetroArch and no cover databases - "
      "the installer adds those from the packs below and db/)"),
@@ -269,7 +275,8 @@ def of_version(name, version):
     tells v2.0.0 from v2.0.0-alpha1 (a prefix match would not)."""
     if not VERSIONED_RE.search(name):
         return True
-    return re.search(r"-%s(-[0-9a-f]{7,40})?\.(zip|tar\.gz|exe|img\.xz)$" % re.escape(version), name) is not None
+    return re.search(r"-%s(-(base|full))?(-[0-9a-f]{7,40})?\.(zip|tar\.gz|exe|img\.xz)$" % re.escape(version),
+                     name) is not None
 
 
 def index_releases(repo, base_url):
@@ -356,7 +363,7 @@ def index_releases(repo, base_url):
 # pre-release's psc zip as a manual download, and InstallerJob::channelRelease already skips a list
 # with no "psc-fs" entry to try the next one, so both already show the nightly release for psc once
 # a pre-release carries none (verified by reading, not by a code change there).
-UNSTABLE_EXCLUDED_KINDS = ("psc",)
+UNSTABLE_EXCLUDED_KINDS = ("psc", "psc-base", "psc-full")
 
 
 def unstable_view(release):
@@ -1614,14 +1621,16 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
     if preview:
         channels.append((preview[-1], "dev", preview[-1]["version"]))
 
-    def release_rows(kinds, short=None):
+    def release_rows(kinds, short=None, notes=None):
         """the packages of these kinds in each channel - release, pre-release, development build"""
         short = short or {}
+        notes = notes or {}
         out = []
         for which, cls, text in channels:
             for kind, _, kind_title in PACKAGE_KINDS:
                 if kind in kinds and kind in which["files"]:
-                    out.append(row(short.get(kind, kind_title), which["files"][kind], text, cls))
+                    out.append(row(short.get(kind, kind_title), which["files"][kind], text, cls,
+                                   note=notes.get(kind, "")))
         return out
 
     def dev_images(titles):
@@ -1659,8 +1668,13 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
                "AutoBleem on it and fetches what you tick - the cover art and, if you want other systems, RetroArch "
                "with its cores, libraries, apps and BIOS files. Run it again to update: your games, saves, memory "
                "cards and settings stay.</p>")
-    rows = release_rows(("installer", "psc"), {"installer": "Installer for Windows",
-                                               "psc": "The stick as one zip (unzip onto a FAT32 stick named SONY)"})
+    rows = release_rows(("installer", "psc-base", "psc-full", "psc"),
+                        {"installer": "Installer for Windows",
+                         "psc-base": "The stick as a zip, base (unzip onto a FAT32 stick named SONY)",
+                         "psc-full": "The stick as a zip, full (unzip onto a FAT32 stick named SONY)",
+                         "psc": "The stick as one zip (unzip onto a FAT32 stick named SONY)"},
+                        {"psc-base": "AutoBleem without RetroArch, smaller. No BIOS files: add your own.",
+                         "psc-full": "AutoBleem with RetroArch and its cores. No BIOS files: add your own."})
     out.append(table(rows) if rows else "<p>No installer published yet.</p>")
     out += older()
     out.append("</div>")
