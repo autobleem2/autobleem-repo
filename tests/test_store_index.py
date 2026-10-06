@@ -115,6 +115,34 @@ def test_store_page_shows_each_system_with_its_items():
         assert 'href="/store/"' in landing
 
 
+def test_item_category_is_the_package_type_in_the_catalog_and_on_the_page():
+    with tempfile.TemporaryDirectory() as repo:
+        psc = os.path.join(repo, "store", "psc")
+        write(os.path.join(psc, "doom-psc-1.zip"), b"zip")
+        write(os.path.join(psc, "term-psc-1.zip"), b"zip")
+        write(os.path.join(psc, "odd-psc-1.zip"), b"zip")
+        write(os.path.join(psc, "lara-1.mod"), b"mod")
+        item(os.path.join(psc, "doom.item.json"), id="app/doom", kind="app", title="Doom", category="Games",
+             files=[{"name": "doom-psc-1.zip"}])
+        item(os.path.join(psc, "term.item.json"), id="app/term", kind="app", title="Term", category="tools",
+             author="Us", files=[{"name": "term-psc-1.zip"}])
+        item(os.path.join(psc, "odd.item.json"), id="app/odd", kind="app", title="Odd", category="pe-apps",
+             files=[{"name": "odd-psc-1.zip"}])  # not a package type: dropped, the item stays
+        item(os.path.join(psc, "lara.item.json"), id="pe/lara", kind="pe", title="Lara", category="games",
+             files=[{"name": "lara-1.mod"}])
+        pages = {}
+        repo_index.index_store(repo, "https://site", pages)
+        with open(os.path.join(psc, "catalog.json"), encoding="utf-8") as f:
+            by_id = {i["id"]: i for i in json.load(f)["items"]}
+        assert by_id["app/doom"]["category"] == "games"  # any case in, lower case out
+        assert by_id["app/term"]["category"] == "tools"
+        assert "category" not in by_id["app/odd"]
+        assert by_id["pe/lara"]["category"] == "games"
+        page = repo_index.render_store("https://site", pages)
+        assert "Type: Games" in page and "Us &middot; Type: Tools" in page
+        assert page.count("Type: ") == 3  # the unknown one shows none
+
+
 def test_no_store_folder():
     with tempfile.TemporaryDirectory() as repo:
         assert repo_index.index_store(repo, "https://site") == {}
