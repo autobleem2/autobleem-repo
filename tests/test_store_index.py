@@ -146,3 +146,31 @@ def test_item_category_is_the_package_type_in_the_catalog_and_on_the_page():
 def test_no_store_folder():
     with tempfile.TemporaryDirectory() as repo:
         assert repo_index.index_store(repo, "https://site") == {}
+
+
+def test_uses_provides_requires_reach_the_catalog_and_the_page():
+    with tempfile.TemporaryDirectory() as repo:
+        psc = os.path.join(repo, "store", "psc")
+        for name in ("eng-1.mod", "data-1.mod", "liero-1.zip"):
+            write(os.path.join(psc, name), b"x")
+        item(os.path.join(psc, "eng.item.json"), id="pe/eng", kind="pe", title="Engine", category="games",
+             uses=["Q3-OpenArena ", "bad kind", "q3-openarena", 3], requires=["pe/data"], files=[{"name": "eng-1.mod"}])
+        item(os.path.join(psc, "data.item.json"), id="pe/data", kind="pe", title="The data", category="packages",
+             files=[{"name": "data-1.mod"}])
+        item(os.path.join(psc, "dos.item.json"), id="pe/dos", kind="pe", title="Dos", uses=["dos-game"],
+             files=[{"name": "eng-1.mod"}])
+        item(os.path.join(psc, "liero.item.json"), id="pkg/liero", kind="package", title="Liero", category="packages",
+             provides=["dos-game"], files=[{"name": "liero-1.zip"}])
+        pages = {}
+        repo_index.index_store(repo, "https://site", pages)
+        with open(os.path.join(psc, "catalog.json"), encoding="utf-8") as f:
+            by_id = {i["id"]: i for i in json.load(f)["items"]}
+        assert by_id["pe/eng"]["uses"] == ["q3-openarena"]  # trimmed, lower case, junk and repeats dropped
+        assert by_id["pe/eng"]["requires"] == ["pe/data"]
+        assert by_id["pe/data"]["category"] == "packages" and "uses" not in by_id["pe/data"]
+        assert by_id["pkg/liero"]["kind"] == "package" and by_id["pkg/liero"]["provides"] == ["dos-game"]
+        page = repo_index.render_store("https://site", pages)
+        assert "Needs: The data" in page  # a requirement is named by its title
+        assert "Needs game data: dos-game" in page  # no requires: the hint
+        assert "Content: dos-game" in page and "Game data packages" in page and "Type: Game data" in page
+        assert page.count("Needs game data") == 1  # the engine with a requirement does not repeat it
