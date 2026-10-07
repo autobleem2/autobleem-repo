@@ -75,7 +75,13 @@ version". Tested in `tests/test_testing_pages.py`.
 set by the launcher's `docs/store-plan.md`.
 - **Publishing**: `repo_publish.sh store <platform> FILES...` puts the files there. Each item is an
   `<id>.item.json` descriptor (id, kind, title, version, author, licence, description, image, files by name
-  with an optional disc, requires, and `source_url`) next to its files. **kind `pe`** is a PE App (the Store's
+  with an optional disc, requires, `category` and `source_url`) next to its files. **`category`** is the package type
+  (games, emulators, tools, media, other or packages = game data; anything else is dropped): `catalog.json` keeps it
+  and the page shows it as "Type". **`uses`** (the content kinds an engine runs), **`provides`** (the kinds a game-data
+  package holds) and `requires` (ids to install first) pass into `catalog.json` too (kinds lower-cased, junk dropped);
+  the page shows "Needs: <title>" / "Needs game data: <kinds>" / "Content: <kinds>". **kind `package`** is a game-data
+  package (a zip with a `package.ini`; the Store puts it in `Packages/`), listed in its own "Game data packages"
+  section. **kind `pe`** is a PE App (the Store's
   "PE Apps" tab, APPS-8): `files` is the one `.mod`, `licence` and `source_url` (the address of the source archive on
   our site, `source/<id>/...`; an http(s) address, passed into `catalog.json`) are shown in the item's details. A
   source archive (`*-source.tar.gz`) is **never** in `files` - it would land on the stick - so a descriptor naming one

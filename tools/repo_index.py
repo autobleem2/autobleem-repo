@@ -584,6 +584,24 @@ def index_win(repo, base_url):
 SOURCE_ARCHIVE_RE = re.compile(r"-source\.tar\.(gz|xz|bz2)$", re.IGNORECASE)
 
 
+# The package types a Store descriptor's "category" may name (the launcher's App categories) and how the page shows them.
+STORE_CATEGORIES = {"games": "Games", "emulators": "Emulators", "tools": "Tools", "media": "Media", "other": "Other",
+                    "packages": "Game data"}
+# a content kind (packages spec, 8.1): lower case, digits, single dashes - what `uses` and `provides` list
+CONTENT_KIND_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+
+
+def content_kinds(value):
+    """`uses` / `provides` of a descriptor: a list of content kinds, lower-cased and trimmed; anything that is not a
+    kind is dropped, and so is an empty or repeated one."""
+    out = []
+    for k in value if isinstance(value, list) else []:
+        k = k.strip().lower() if isinstance(k, str) else ""
+        if CONTENT_KIND_RE.match(k) and k not in out:
+            out.append(k)
+    return out
+
+
 def index_store(repo, base_url, pages=None):
     """store/<platform>/: the AutoBleem Store's catalog (the launcher's docs/store-plan.md), one per platform.
 
@@ -594,6 +612,13 @@ def index_store(repo, base_url, pages=None):
     and catalog.json lists them with each file's size, sha256 and url (the Store refuses a download that does
     not match). A descriptor that names a file which is not there, or lacks an id, a kind or a title, is left
     out and said so. A file no descriptor names any more (an App's previous version) is pruned.
+
+    "category" is the package's type - games, emulators, tools, media, other or packages (game data) (any case; the
+    launcher files an installed App there, the Store shows it as "Type"). Anything else, or none, is left out of the
+    catalog. "uses" (the content kinds an engine runs) and "provides" (the kinds a game-data package holds) are lists
+    of content kinds, passed through lower-cased; "requires" (ids of the items to install first) likewise.
+
+    kind "package" is a game-data package (a zip with a package.ini; the Store puts it in Packages/).
 
     kind "pe" is a PE App (the Store's "PE Apps" tab): files is the one .mod, which the Store puts in Mods/. Its
     descriptor also carries "source_url", the address of the corresponding source archive (GPL items; shown in the
@@ -647,6 +672,13 @@ def index_store(repo, base_url, pages=None):
                 continue
             item = {k: d[k] for k in ("id", "kind", "title", "version", "author", "licence", "description",
                                       "serial", "requires") if d.get(k)}
+            category = d.get("category")
+            if isinstance(category, str) and category.strip().lower() in STORE_CATEGORIES:
+                item["category"] = category.strip().lower()
+            for key in ("uses", "provides"):
+                kinds = content_kinds(d.get(key))
+                if kinds:
+                    item[key] = kinds
             source_url = d.get("source_url")
             if isinstance(source_url, str) and source_url.startswith(("http://", "https://")):
                 item["source_url"] = source_url
@@ -1919,11 +1951,13 @@ def render_store(base_url, store, extension=None, lanshare=None):
                         "(the data partition on a Raspberry Pi or the PC stick): it adds "
                         "<code>Extensions/store/</code>. Then <b>L2+R2 &rarr; Extensions</b>.</p>%s</div>"
                         % files_table(rows))
-        for kind, heading in (("app", "Apps"), ("pe", "PE Apps"), ("ps1", "Games")):
+        titles = {i["id"]: i["title"] for i in items}
+        for kind, heading in (("app", "Apps"), ("pe", "PE Apps"), ("package", "Game data packages"), ("ps1", "Games")):
             rows = []
             for i in sorted((i for i in items if i["kind"] == kind), key=lambda i: i["title"].lower()):
                 note = e(i.get("description", ""))
                 credits = " &middot; ".join(e(x) for x in (i.get("author"), i.get("licence")) if x)
+                type_name = STORE_CATEGORIES.get(i.get("category", ""))
                 if kind == "pe":
                     # a PE App: its licence in words, and the link to the source it was built from (GPL items)
                     credits = " &middot; ".join(
@@ -1931,6 +1965,18 @@ def render_store(base_url, store, extension=None, lanshare=None):
                                     "Licence: " + e(i["licence"]) if i.get("licence") else "",
                                     "<a href=\"%s\">Source code</a>" % e(i["source_url"]) if i.get("source_url")
                                     else "") if x)
+                if type_name:
+                    credits += (" &middot; " if credits else "") + "Type: " + type_name
+                # what the item needs (packages spec, 8.2) and what a package holds
+                hints = []
+                if i.get("requires"):
+                    hints.append("Needs: " + e(", ".join(titles.get(r, r) for r in i["requires"])))
+                elif i.get("uses"):
+                    hints.append("Needs game data: " + e(", ".join(i["uses"])))
+                if i.get("provides"):
+                    hints.append("Content: " + e(", ".join(i["provides"])))
+                if hints:
+                    credits += (" &middot; " if credits else "") + " &middot; ".join(hints)
                 if credits:
                     note += ("<br>" if note else "") + credits
                 for n, f in enumerate(i["files"]):
@@ -1944,6 +1990,9 @@ def render_store(base_url, store, extension=None, lanshare=None):
                              "Apps</b> tab installs them with one press; to install one by hand, copy its "
                              "<code>.mod</code> file into the <code>Mods/</code> folder of the stick. Each one "
                              "links the source it was built from.</p>")
+                if kind == "package":
+                    intro = ("<p>Game files as packages: the Store puts one in the <code>Packages/</code> folder of the "
+                             "stick, and an engine that runs that kind of game offers it in its picker.</p>")
                 body.append("<div class=\"panel\"><h2>%s</h2>%s%s</div>" % (heading, intro, files_table(rows)))
         if not items:
             body.append("<div class=\"panel\"><p>%s</p></div>" % ("No Apps or games for this system yet." if own
