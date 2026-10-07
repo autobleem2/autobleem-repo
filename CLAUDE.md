@@ -147,6 +147,18 @@ a BIOS file. They are the package kinds `psc-base` and `psc-full` (before the ol
 installer, each with a one-line note. `unstable.json` leaves them out, like `psc` - the console's update reads the
 `psc-fs` tarball only. Tested in `tests/test_psc_zips_page.py`.
 
+## The installer with its payload (PLATFORM-23)
+
+A release and a development build also carry `AutoBleemInstaller-<v>-full.zip` (~1 GB, made by autobleem-appliance's
+`assemble-psc.sh` step 7 / `tools/psc_bundle.py`): the signed installer with the packs it would download beside it
+(`payload/`, a manifest of size and sha256 each), no BIOS file - the one thing it still fetches. It is the package kind
+`installer-full` (right after `installer`, whose pattern now leaves `-full` out: the first kind a name matches is its
+kind); `of_version` already takes the `-full` suffix. It sits in the PlayStation Classic Install table under the online
+installer with its own note, and `unstable.json` leaves it out like the stick zips. `tools/repo_publish.sh` publishes it
+like any other file of a release or a development build (the `.sha256` next to it is made there); there is no kind
+argument for it. Mind the disk: a release keeps every version's zip, a development build is replaced by the next
+(`NIGHTLY_KEEP`). Tested in `tests/test_installer_full_page.py`.
+
 ## The pages' look and structure - the rules (the owner's, 2026-09-23)
 
 The owner approved the 2026-09-23 redesign ("look and feel of the page is great"). **Keep it; change it only

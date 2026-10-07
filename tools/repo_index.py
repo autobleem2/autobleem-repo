@@ -64,7 +64,7 @@ import sys
 from datetime import datetime, timezone
 
 # bump on every change: tools/repo_publish.sh only replaces the copy the repository runs with a newer one
-INDEX_VERSION = 50
+INDEX_VERSION = 51
 
 # the splash page's "Where we are" block updates itself (2026-10-03, the owner): the release rows come from
 # index_releases (splash_release_rows: the newest stable release, the newer pre-release, the next milestone) and
@@ -82,8 +82,13 @@ KOFI_URL = "https://ko-fi.com/autobleem"
 
 # the release packages, by the name they carry (tools/make_*_package.sh, ci/build.sh)
 PACKAGE_KINDS = [
-    ("installer", re.compile(r"^AutoBleemInstaller-.*\.zip$"),
+    ("installer", re.compile(r"^AutoBleemInstaller-(?!.*-full\.zip$).*\.zip$"),
      "PlayStation Classic installer for Windows (downloads the stick's file system from the channel picked in it)"),
+    # the same installer with the packs it would download beside it (PLATFORM-23): ~1 GB, no BIOS file - those are
+    # the one thing it still fetches. The first kind a name matches is its kind, so "installer" leaves -full out
+    ("installer-full", re.compile(r"^AutoBleemInstaller-.*-full\.zip$"),
+     "PlayStation Classic installer for Windows with everything in the download (no channel; only the BIOS files "
+     "are fetched)"),
     # the stick as two zips (PLATFORM-21): -base without RetroArch, -full with RetroArch and its cores; neither has a
     # BIOS file. Before "psc" - the first kind a name matches is its kind
     ("psc-base", re.compile(r"^autobleem-psc-.*-base\.zip$"),
@@ -363,7 +368,7 @@ def index_releases(repo, base_url):
 # pre-release's psc zip as a manual download, and InstallerJob::channelRelease already skips a list
 # with no "psc-fs" entry to try the next one, so both already show the nightly release for psc once
 # a pre-release carries none (verified by reading, not by a code change there).
-UNSTABLE_EXCLUDED_KINDS = ("psc", "psc-base", "psc-full")
+UNSTABLE_EXCLUDED_KINDS = ("psc", "psc-base", "psc-full", "installer-full")
 
 
 def unstable_view(release):
@@ -1685,12 +1690,16 @@ def render_index(base_url, releases, builds, cores, images, dbs, psc_builds, psc
                "AutoBleem on it and fetches what you tick - the cover art and, if you want other systems, RetroArch "
                "with its cores, libraries, apps and BIOS files. Run it again to update: your games, saves, memory "
                "cards and settings stay.</p>")
-    rows = release_rows(("installer", "psc-base", "psc-full", "psc"),
+    rows = release_rows(("installer", "installer-full", "psc-base", "psc-full", "psc"),
                         {"installer": "Installer for Windows",
+                         "installer-full": "Installer for Windows, everything in the download",
                          "psc-base": "The stick as a zip, base (unzip onto a FAT32 stick named SONY)",
                          "psc-full": "The stick as a zip, full (unzip onto a FAT32 stick named SONY)",
                          "psc": "The stick as one zip (unzip onto a FAT32 stick named SONY)"},
-                        {"psc-base": "AutoBleem without RetroArch, smaller. No BIOS files: add your own.",
+                        {"installer-full": "About 1 GB: AutoBleem, RetroArch with its cores, the covers and the apps are in "
+                                           "the zip, so the install needs no download - only the BIOS files, if you "
+                                           "tick them, come from the internet. Unzip the whole zip, then run it.",
+                         "psc-base": "AutoBleem without RetroArch, smaller. No BIOS files: add your own.",
                          "psc-full": "AutoBleem with RetroArch and its cores. No BIOS files: add your own."})
     out.append(table(rows) if rows else "<p>No installer published yet.</p>")
     out += older()
