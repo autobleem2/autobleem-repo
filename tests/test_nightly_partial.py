@@ -248,6 +248,20 @@ def test_cleanup_partial_refuses_anything_that_is_not_a_plain_name(tmp_path):
     assert publish(repo, "cleanup-partial", "nightly").returncode != 0
 
 
+def test_cleanup_partial_accepts_only_the_nightly_and_preview_channels(tmp_path):
+    repo = str(tmp_path / "site")
+    for channel in ("releases", "image", "other", "Nightly"):
+        put_with_sidecar(os.path.join(repo, channel, "v-1.partial", "a.tar.gz"))
+        r = publish(repo, "cleanup-partial", channel, "v-1")
+        assert r.returncode != 0, channel
+        assert "nightly, preview" in r.stderr, r.stderr
+        assert os.path.isdir(os.path.join(repo, channel, "v-1.partial")), channel
+    put_with_sidecar(os.path.join(repo, "preview", "v-1.partial", "a.tar.gz"))
+    r = publish(repo, "cleanup-partial", "preview", "v-1")
+    assert r.returncode == 0, r.stderr
+    assert not os.path.exists(os.path.join(repo, "preview", "v-1.partial"))
+
+
 def test_cleanup_partial_refuses_a_symlinked_partial_and_deletes_nothing(tmp_path):
     repo = str(tmp_path / "site")
     folder = finished_nightly(repo, "v-1", time.time() - 100)

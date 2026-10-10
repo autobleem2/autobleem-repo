@@ -118,7 +118,8 @@
 #                                                                                 "carried" in its sources.json, then
 #                                                                                 indexes (tools/nightly_carry.py)
 #   tools/repo_publish.sh cleanup-partial <channel> <version>                  removes <channel>/<version>.partial (nightly,
-#                                                                                 preview) and nothing else
+#                                                                                 preview - the only channels accepted, any
+#                                                                                 other name is an error) and nothing else
 #
 # The page generator travels with every publish, three-way merged with the repository's copy (see
 # tools/repo_index_merge.py) - never copied over it.
@@ -331,7 +332,10 @@ if [ "$KIND" = cleanup-partial ]; then
     [ $# -eq 2 ] || { echo "usage: repo_publish.sh [--local] cleanup-partial <channel> <version>" >&2; exit 1; }
     plain_name channel "$1" || exit 1
     plain_name version "$2" || exit 1
-    case "$1" in *.partial) echo "repo_publish.sh: not a channel: $1" >&2; exit 1 ;; esac
+    case "$1" in
+        nightly|preview) ;;
+        *) echo "repo_publish.sh: not a channel: '$1' (allowed: nightly, preview)" >&2; exit 1 ;;
+    esac
     use_transport
     if [ "$LOCAL" -eq 1 ]; then
         cleanup_partial_script "$1" "$2" | bash

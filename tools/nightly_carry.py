@@ -165,6 +165,10 @@ def main(argv):
     if unknown or not platforms:
         print("nightly_carry: unknown or empty platform list: %s" % argv[3], file=sys.stderr)
         return 1
+    if not os.path.isdir(os.path.join(root, version)):
+        print("nightly_carry: no folder for version %s in %s - nothing was published for it" % (version, root),
+              file=sys.stderr)
+        return 1
     carried = carry(root, version, platforms)
     for name in sorted(carried):
         print("carried %s from %s" % (name, carried[name]))

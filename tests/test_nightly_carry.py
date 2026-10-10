@@ -195,6 +195,37 @@ def test_carry_nightly_kind_refuses_bad_arguments(tmp_path):
     assert run_publish(repo, "carry-nightly", "v-2", "nonsense").returncode != 0
 
 
+def test_carry_nightly_for_a_missing_version_folder_is_an_error(tmp_path):
+    repo = str(tmp_path / "site")
+    build(os.path.join(repo, "nightly"), "v-1", ALL, time.time() - 5000)
+    r = run_publish(repo, "carry-nightly", "v-9", "psc")
+    assert r.returncode != 0
+    assert "v-9" in r.stderr + r.stdout
+    assert "nothing to carry" not in r.stdout
+
+
+def test_carry_nightly_with_an_existing_folder_and_nothing_to_carry_exits_zero(tmp_path):
+    repo = str(tmp_path / "site")
+    build(os.path.join(repo, "nightly"), "v-1", ["psc"], time.time() - 100)
+    r = run_publish(repo, "carry-nightly", "v-1", "psc")
+    assert r.returncode == 0, r.stderr + r.stdout
+    assert "nothing to carry" in r.stdout
+
+
+def test_carried_files_keep_their_old_version_in_the_name(tmp_path):
+    root = str(tmp_path / "nightly")
+    build(root, "v-1", ALL, time.time() - 5000)
+    new = build(root, "v-2", ["psc"], time.time() - 100)
+    carried = nightly_carry.carry(root, "v-2", ["psc"])
+    assert carried
+    for name in carried:
+        # no renaming: the origin is recorded in sources.json (the unversioned Imager template has no version at all)
+        assert "v-2" not in name
+        assert "v-1" in name or name == "rpi_imager_repo.json"
+        assert os.path.exists(os.path.join(new, name))
+    assert "AutoBleemSetup-v-1.exe" in carried
+
+
 def test_the_final_publish_carries_when_asked(tmp_path):
     repo = str(tmp_path / "site")
     root = os.path.join(repo, "nightly")

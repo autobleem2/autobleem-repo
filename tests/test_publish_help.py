@@ -12,6 +12,7 @@ def test_help_is_complete():
     assert r.returncode == 0, r.stderr
     assert "cleanup-partial" in r.stdout
     assert "removes <channel>/<version>.partial" in r.stdout
+    assert "the only channels accepted" in r.stdout
     assert "indexes (tools/nightly_carry.py)" in r.stdout
     assert "The page generator travels with every publish" in r.stdout
 
