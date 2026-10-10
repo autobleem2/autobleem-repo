@@ -91,13 +91,34 @@
 #   tools/repo_publish.sh --partial nightly <version> FILES...                 part of a development build that is still
 #                                                                                 being published (each image as it is
 #                                                                                 built, then the packages): the files go
-#                                                                                 into nightly/<version>/ with a
-#                                                                                 .incomplete marker and the index is NOT
-#                                                                                 run - repo_index.py leaves a marked
-#                                                                                 folder out, so the previous nightly
+#                                                                                 into nightly/<version>.partial/ - never
+#                                                                                 into nightly/<version>/ - and the index
+#                                                                                 is NOT run; repo_index.py never lists a
+#                                                                                 .partial folder (and prunes one older
+#                                                                                 than 2 days), so every finished nightly
 #                                                                                 stays whole. The run's last publish,
-#                                                                                 a plain `nightly <version> ...`, takes
-#                                                                                 the marker away and indexes.
+#                                                                                 a plain `nightly <version> ...`, moves
+#                                                                                 the staged files into nightly/<version>/
+#                                                                                 (merged over a finished folder of the
+#                                                                                 same version), deletes the .partial
+#                                                                                 folder and indexes. With
+#                                                                                 AB_CARRY_PLATFORMS=psc,win set it also
+#                                                                                 carries the other platforms' files over
+#                                                                                 from the previous nightly first. The
+#                                                                                 list is the platforms the run BUILT (the
+#                                                                                 CI caller passes the built list); the
+#                                                                                 complement is what gets carried.
+#   tools/repo_publish.sh carry-nightly <version> <platform,platform,...>      the list is the platforms the run BUILT
+#                                                                                 (rpi-armhf rpi-arm64 pcusb psc win); the
+#                                                                                 complement is carried: hard-links the
+#                                                                                 files of the platforms NOT in the list,
+#                                                                                 per platform from the newest finished
+#                                                                                 nightly that has a file of it,
+#                                                                                 into nightly/<version>/, records them as
+#                                                                                 "carried" in its sources.json, then
+#                                                                                 indexes (tools/nightly_carry.py)
+#   tools/repo_publish.sh cleanup-partial <channel> <version>                  removes <channel>/<version>.partial (nightly,
+#                                                                                 preview) and nothing else
 #
 # The page generator travels with every publish, three-way merged with the repository's copy (see
 # tools/repo_index_merge.py) - never copied over it.
@@ -176,7 +197,7 @@ upload() { # upload STAGE-DIR
     [ "$rc" -eq 0 ] || { echo "repo_publish.sh: the upload to $REPO_HOST:$REPO_DIR failed (rsync exit $rc). Nothing was published." >&2; exit 1; }
 }
 
-usage() { sed -n '2,100p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { awk 'NR > 1 && !/^#/ { exit } NR > 1' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 withdraw_usage() {
     cat <<'EOF' >&2
@@ -281,6 +302,49 @@ done
 [ $# -ge 1 ] || usage 1
 KIND="$1"; shift
 
+# a version, channel or platform list ends up inside a script that runs on the server: plain names only
+plain_name() { # plain_name WHAT VALUE
+    case "$2" in
+        ""|.*|*[!A-Za-z0-9._-]*) echo "repo_publish.sh: not a plain $1 name: '$2'" >&2; return 1 ;;
+    esac
+}
+
+# cleanup-partial <channel> <version>: removes <REPO_DIR>/<channel>/<version>.partial and nothing else - the resolved
+# path must be exactly <REPO_DIR>/<channel>/<version>.partial (no symlink, no ..), else it is refused
+cleanup_partial_script() {
+    printf "REPO_DIR='%s'; CHANNEL='%s'; VERSION='%s'\n" "$REPO_DIR" "$1" "$2"
+    cat <<'EOF'
+set -e
+[ -d "$REPO_DIR" ] || { echo "nothing to clean: no $REPO_DIR"; exit 0; }
+base="$(cd "$REPO_DIR" && pwd -P)"
+target="$REPO_DIR/$CHANNEL/$VERSION.partial"
+if [ ! -e "$target" ] && [ ! -L "$target" ]; then echo "nothing to clean: $target"; exit 0; fi
+if [ -L "$target" ] || [ ! -d "$target" ]; then echo "refused: $target is not a plain folder" >&2; exit 1; fi
+resolved="$(cd "$target" && pwd -P)"
+if [ "$resolved" != "$base/$CHANNEL/$VERSION.partial" ]; then echo "refused: $target resolves to $resolved" >&2; exit 1; fi
+rm -r -- "$resolved"
+echo "removed $resolved"
+EOF
+}
+
+if [ "$KIND" = cleanup-partial ]; then
+    [ $# -eq 2 ] || { echo "usage: repo_publish.sh [--local] cleanup-partial <channel> <version>" >&2; exit 1; }
+    plain_name channel "$1" || exit 1
+    plain_name version "$2" || exit 1
+    case "$1" in *.partial) echo "repo_publish.sh: not a channel: $1" >&2; exit 1 ;; esac
+    use_transport
+    if [ "$LOCAL" -eq 1 ]; then
+        cleanup_partial_script "$1" "$2" | bash
+    else
+        cleanup_partial_script "$1" "$2" | ssh "$REPO_HOST" bash
+    fi
+    exit $?
+fi
+
+# the nightly's platforms the run did not build are carried over from the previous nightly (tools/nightly_carry.py)
+CARRY_VERSION=""
+CARRY_PLATFORMS=""
+
 # the source mirror of a PE App (source/<id>/): <id>-<version>-source.tar.gz only - the address mkmod.py writes into
 # the package's SOURCE.txt (AB_SOURCE_BASE/<id>/<id>-<version>-source.tar.gz) must be exactly where the file lands
 pe_source_check() {
@@ -297,7 +361,9 @@ pe_source_check() {
 # where the files of this kind land, relative to the repository root
 case "$KIND" in
     release)   [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="releases/$VERSION" ;;
-    nightly)   [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="nightly/$VERSION" ;;
+    nightly)   [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="nightly/$VERSION"
+               CARRY_VERSION="$VERSION"; CARRY_PLATFORMS="${AB_CARRY_PLATFORMS:-}" ;;
+    carry-nightly) [ $# -eq 2 ] || usage 1; VERSION="$1"; CARRY_VERSION="$1"; CARRY_PLATFORMS="$2"; shift 2; DEST="" ;;
     preview)   [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="preview/$VERSION" ;;
     image)     [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="rpi-imager/images/$VERSION" ;;
     retroarch) [ $# -ge 2 ] || usage 1; VERSION="$1"; shift; DEST="rpi/retroarch/$VERSION" ;;
@@ -334,6 +400,14 @@ if [ "$PARTIAL" -eq 1 ] && [ "$KIND" != nightly ] && [ "$KIND" != preview ]; the
     echo "--partial is for a development build (nightly, preview) only" >&2
     exit 1
 fi
+if [ -n "$CARRY_VERSION" ]; then
+    plain_name version "$CARRY_VERSION" || exit 1
+    case "$CARRY_PLATFORMS" in *[!a-z0-9,-]*) echo "repo_publish.sh: not a platform list: '$CARRY_PLATFORMS'" >&2; exit 1 ;; esac
+    [ "$KIND" != carry-nightly ] || [ -n "$CARRY_PLATFORMS" ] || { echo "carry-nightly needs a platform list" >&2; exit 1; }
+fi
+# a run still being published is staged beside the version's own folder, never in it
+FINAL_DEST="$DEST"
+if [ "$PARTIAL" -eq 1 ]; then DEST="$DEST.partial"; fi
 use_transport
 
 # a scratch dir with the files to upload and their sidecars, so one rsync does it
@@ -410,9 +484,8 @@ if [ -n "$DEST" ]; then
     fi
 fi
 
-# part of a development build: the files and the marker, no generator, no index (see --partial above)
+# part of a development build: the files into <version>.partial/, no generator, no index (see --partial above)
 if [ "$PARTIAL" -eq 1 ]; then
-    touch "$STAGE/$DEST/.incomplete"
     if [ "$LOCAL" -eq 1 ]; then
         mkdir -p "$REPO_DIR"
         cp -r "$STAGE"/. "$REPO_DIR"/
@@ -442,13 +515,41 @@ if ! "$PY" "$HERE/repo_index_merge.py" --mine "$HERE/repo_index.py"         --th
     exit 1
 fi
 rm -rf "$STAGE/.merge"
+cp "$HERE/nightly_carry.py" "$STAGE/.tools/nightly_carry.py"
+
+# the run's last publish of a development build: the pieces staged in <version>.partial/ move into <version>/ file by
+# file (a finished folder of the same version is merged over, not replaced; a .sha256 sidecar is a file of its own and
+# moves with its file), then the staging folder goes. The text runs inside the remote index step, i.e. only AFTER the
+# final files were uploaded: a failed upload leaves <version>.partial intact. A staged file never replaces a file of
+# the final set (the names of that set are listed here, from the staging area) - the final files win a clash.
+merge_partial_snippet() {
+    local final="" f
+    while IFS= read -r f; do final="$final $(printf '%q' "$f")"; done < <(cd "$STAGE/$DEST" && find . -type f | sed 's|^\./||')
+    printf 'final=(%s)\n' "$final"
+    cat <<'EOF'
+p="$DEST.partial"
+if [ -d "$p" ] && [ ! -L "$p" ]; then
+    mkdir -p "$DEST"
+    (cd "$p" && find . -type f | sed 's|^\./||') | while IFS= read -r f; do
+        skip=0
+        for x in "${final[@]}"; do if [ "$x" = "$f" ]; then skip=1; fi; done
+        if [ "$skip" -eq 1 ]; then continue; fi
+        mkdir -p "$(dirname "$DEST/$f")"
+        mv -f -- "$p/$f" "$DEST/$f"
+    done
+    rm -r -- "$p"
+fi
+EOF
+}
 
 # the index run on the server (and the image retention)
 remote_index() {
     cat <<EOF
 set -e
 cd "$REPO_DIR"
+$( { [ "$KIND" = nightly ] || [ "$KIND" = preview ]; } && { printf "DEST='%s'\n" "$DEST"; merge_partial_snippet; } )
 $( { [ "$KIND" = nightly ] || [ "$KIND" = preview ]; } && echo "rm -f \"$DEST/.incomplete\" # the build's last publish: it is whole now" )
+$( [ -n "$CARRY_PLATFORMS" ] && echo "python3 .tools/nightly_carry.py nightly \"$CARRY_VERSION\" \"$CARRY_PLATFORMS\" # the platforms this run did not build, from the previous nightly" )
 if [ -f assets/icon.png ]; then mkdir -p rpi-imager && cp assets/icon.png rpi-imager/icon.png; fi
 if [ -f assets/favicon.ico ]; then cp assets/favicon.ico favicon.ico; fi
 if ! python3 .tools/repo_index.py . --base-url "$AB_REPO_URL"; then
@@ -483,6 +584,6 @@ if [ "$LOCAL" -eq 1 ]; then
     [ "$rc" -eq 0 ] || exit "$rc"
 else
     upload "$STAGE"
-    ssh "$REPO_HOST" "$(remote_index)"         || { echo "repo_publish.sh: the files are on $REPO_HOST but the index run there failed (exit $?)." >&2; exit 1; }
+    remote_index | ssh "$REPO_HOST" bash       || { echo "repo_publish.sh: the files are on $REPO_HOST but the index run there failed (exit $?)." >&2; exit 1; }
 fi
 echo "done: $AB_REPO_URL/${DEST:+$DEST/}"

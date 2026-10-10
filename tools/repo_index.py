@@ -1219,6 +1219,26 @@ def unfinished_nightlies(folders, is_incomplete, published, now):
     return [f for f in unfinished if f not in stale], stale
 
 
+# repo_publish.sh --partial stages a run's pieces into <section>/<version>.partial/ - never into the version's own
+# folder, so a finished build of the same version is not touched; the run's last publish moves them over it
+PARTIAL_SUFFIX = ".partial"
+
+
+def newest_file_time(folder):
+    """The mtime of the newest file inside `folder` (any depth); the folder's own when it holds none."""
+    times = []
+    for here, _dirs, names in os.walk(folder):
+        times.extend(os.path.getmtime(os.path.join(here, n)) for n in names)
+    return max(times) if times else os.path.getmtime(folder)
+
+
+def partial_folders(root):
+    """The <version>.partial staging folders under `root` (a symlink is not one: prune() cannot rmtree it)."""
+    return sorted(os.path.join(root, v) for v in os.listdir(root)
+                  if v.endswith(PARTIAL_SUFFIX) and os.path.isdir(os.path.join(root, v))
+                  and not os.path.islink(os.path.join(root, v)))
+
+
 def index_nightly(repo, base_url, section="nightly"):
     """nightly/<version>/ - the development builds of develop (the nightly run, or one started by hand): the
     packages a release has, named by `git describe` (v2.0.0-alpha2-14-gabc1234), and the images when that run
@@ -1237,7 +1257,12 @@ def index_nightly(repo, base_url, section="nightly"):
         times = [os.path.getmtime(os.path.join(folder, n)) for n in os.listdir(folder) if n.endswith(".sha256")]
         return max(times) if times else os.path.getmtime(folder)
 
-    folders = sorted((os.path.join(root, v) for v in os.listdir(root) if os.path.isdir(os.path.join(root, v))),
+    # a .partial staging folder is never a build: not listed, not counted; one abandoned for two days goes
+    now = datetime.now().timestamp()
+    prune([p for p in partial_folders(root) if now - newest_file_time(p) > UNFINISHED_MAX_AGE], [],
+          "abandoned partial development build")
+    folders = sorted((os.path.join(root, v) for v in os.listdir(root)
+                      if os.path.isdir(os.path.join(root, v)) and not v.endswith(PARTIAL_SUFFIX)),
                      key=published)
     # a build still being published (repo_publish.sh --partial) is not a nightly yet: it neither replaces the one
     # before nor is listed until its run's last publish; one a run left unfinished goes after two days
