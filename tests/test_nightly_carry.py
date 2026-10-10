@@ -108,6 +108,23 @@ def test_carry_never_overwrites_a_file_the_run_produced(tmp_path):
         assert f.read() == "produced by this run"
 
 
+def test_a_unit_already_in_the_destination_is_never_carried(tmp_path):
+    root = str(tmp_path / "nightly")
+    build(root, "v-1", ALL, time.time() - 5000)
+    new = build(root, "v-2", ["rpi-armhf"], time.time() - 100)  # package + image + Imager template
+    carried = nightly_carry.carry(root, "v-2", ["psc", "win"])
+    assert not any("v-1" in n for n in os.listdir(new) if "armhf" in n)
+    assert not os.path.exists(os.path.join(new, "autobleem-rpi-armhf-v-1.tar.gz"))
+    assert not os.path.exists(os.path.join(new, "autobleem-v-1-rpi-armhf.img.xz"))
+    with open(os.path.join(new, "rpi_imager_repo.json")) as f:
+        assert f.read() == "{}"
+    expected = set()
+    for p in ("rpi-arm64", "pcusb"):
+        expected |= set(names_for("v-1")[p])
+    assert set(carried) == expected
+    assert os.path.exists(os.path.join(new, "autobleem-rpi-arm64-v-1.tar.gz"))
+
+
 def test_a_full_run_carries_nothing_and_leaves_sources_json_alone(tmp_path):
     root = str(tmp_path / "nightly")
     build(root, "v-1", ALL, time.time() - 5000)

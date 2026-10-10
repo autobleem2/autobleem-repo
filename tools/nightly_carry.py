@@ -124,7 +124,9 @@ def carry(root, new_version, built_platforms):
     if not os.path.isdir(dest):
         return {}
     carried = {}
-    done = set()
+    # a unit that already has ANY file in the destination is complete as it is: never carried (names carry the
+    # version, so an identical-name check alone would add the old package/image next to the new ones)
+    done = {unit_of(n) for n in os.listdir(dest)} - {None}
     # the source is chosen PER PLATFORM: the newest finished folder that has a file of that platform (a newest
     # folder that is package-only or a failed-image leftover must not hide the files of an older one)
     for previous in finished_nightlies(root, new_version):
