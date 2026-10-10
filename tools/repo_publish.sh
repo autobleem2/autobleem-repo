@@ -197,7 +197,7 @@ upload() { # upload STAGE-DIR
     [ "$rc" -eq 0 ] || { echo "repo_publish.sh: the upload to $REPO_HOST:$REPO_DIR failed (rsync exit $rc). Nothing was published." >&2; exit 1; }
 }
 
-usage() { sed -n '2,118p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { awk 'NR > 1 && !/^#/ { exit } NR > 1' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 withdraw_usage() {
     cat <<'EOF' >&2
@@ -584,6 +584,6 @@ if [ "$LOCAL" -eq 1 ]; then
     [ "$rc" -eq 0 ] || exit "$rc"
 else
     upload "$STAGE"
-    ssh "$REPO_HOST" "$(remote_index)"         || { echo "repo_publish.sh: the files are on $REPO_HOST but the index run there failed (exit $?)." >&2; exit 1; }
+    remote_index | ssh "$REPO_HOST" bash       || { echo "repo_publish.sh: the files are on $REPO_HOST but the index run there failed (exit $?)." >&2; exit 1; }
 fi
 echo "done: $AB_REPO_URL/${DEST:+$DEST/}"
