@@ -104,10 +104,16 @@
 #                                                                                 folder and indexes. With
 #                                                                                 AB_CARRY_PLATFORMS=psc,win set it also
 #                                                                                 carries the other platforms' files over
-#                                                                                 from the previous nightly first.
-#   tools/repo_publish.sh carry-nightly <version> <platform,platform,...>      hard-links the files of the platforms NOT in
-#                                                                                 the list (rpi-armhf rpi-arm64 pcusb psc
-#                                                                                 win) from the previous finished nightly
+#                                                                                 from the previous nightly first. The
+#                                                                                 list is the platforms the run BUILT (the
+#                                                                                 CI caller passes the built list); the
+#                                                                                 complement is what gets carried.
+#   tools/repo_publish.sh carry-nightly <version> <platform,platform,...>      the list is the platforms the run BUILT
+#                                                                                 (rpi-armhf rpi-arm64 pcusb psc win); the
+#                                                                                 complement is carried: hard-links the
+#                                                                                 files of the platforms NOT in the list,
+#                                                                                 per platform from the newest finished
+#                                                                                 nightly that has a file of it,
 #                                                                                 into nightly/<version>/, records them as
 #                                                                                 "carried" in its sources.json, then
 #                                                                                 indexes (tools/nightly_carry.py)
@@ -513,17 +519,21 @@ cp "$HERE/nightly_carry.py" "$STAGE/.tools/nightly_carry.py"
 
 # the run's last publish of a development build: the pieces staged in <version>.partial/ move into <version>/ file by
 # file (a finished folder of the same version is merged over, not replaced; a .sha256 sidecar is a file of its own and
-# moves with its file), then the staging folder goes. Runs before the final files are copied, so those win a clash.
-merge_partial_script() {
-    printf "REPO_DIR='%s'; DEST='%s'\n" "$REPO_DIR" "$DEST"
+# moves with its file), then the staging folder goes. The text runs inside the remote index step, i.e. only AFTER the
+# final files were uploaded: a failed upload leaves <version>.partial intact. A staged file never replaces a file of
+# the final set (the names of that set are listed here, from the staging area) - the final files win a clash.
+merge_partial_snippet() {
+    local final="" f
+    while IFS= read -r f; do final="$final $(printf '%q' "$f")"; done < <(cd "$STAGE/$DEST" && find . -type f | sed 's|^\./||')
+    printf 'final=(%s)\n' "$final"
     cat <<'EOF'
-set -e
-[ -d "$REPO_DIR" ] || exit 0
-cd "$REPO_DIR"
 p="$DEST.partial"
 if [ -d "$p" ] && [ ! -L "$p" ]; then
     mkdir -p "$DEST"
     (cd "$p" && find . -type f | sed 's|^\./||') | while IFS= read -r f; do
+        skip=0
+        for x in "${final[@]}"; do if [ "$x" = "$f" ]; then skip=1; fi; done
+        if [ "$skip" -eq 1 ]; then continue; fi
         mkdir -p "$(dirname "$DEST/$f")"
         mv -f -- "$p/$f" "$DEST/$f"
     done
@@ -531,17 +541,13 @@ if [ -d "$p" ] && [ ! -L "$p" ]; then
 fi
 EOF
 }
-merge_partial() {
-    { [ "$KIND" = nightly ] || [ "$KIND" = preview ]; } || return 0
-    if [ "$LOCAL" -eq 1 ]; then merge_partial_script | bash; else merge_partial_script | ssh "$REPO_HOST" bash; fi
-}
-merge_partial
 
 # the index run on the server (and the image retention)
 remote_index() {
     cat <<EOF
 set -e
 cd "$REPO_DIR"
+$( { [ "$KIND" = nightly ] || [ "$KIND" = preview ]; } && { printf "DEST='%s'\n" "$DEST"; merge_partial_snippet; } )
 $( { [ "$KIND" = nightly ] || [ "$KIND" = preview ]; } && echo "rm -f \"$DEST/.incomplete\" # the build's last publish: it is whole now" )
 $( [ -n "$CARRY_PLATFORMS" ] && echo "python3 .tools/nightly_carry.py nightly \"$CARRY_VERSION\" \"$CARRY_PLATFORMS\" # the platforms this run did not build, from the previous nightly" )
 if [ -f assets/icon.png ]; then mkdir -p rpi-imager && cp assets/icon.png rpi-imager/icon.png; fi

@@ -190,3 +190,18 @@ def test_the_final_publish_carries_when_asked(tmp_path):
     assert r.returncode == 0, r.stderr + r.stdout
     assert os.path.exists(os.path.join(root, "v-2", "AutoBleemSetup-v-1.exe"))
     assert os.path.exists(os.path.join(root, "v-2", "autobleem-psc-v-2-base.zip"))
+
+
+def test_the_source_is_chosen_per_platform_not_from_the_newest_folder_only(tmp_path):
+    root = str(tmp_path / "nightly")
+    build(root, "v-1", ALL, time.time() - 9000)
+    build(root, "v-2", ["psc"], time.time() - 5000)  # newest finished folder: no rpi-armhf files
+    new = build(root, "v-3", ["win"], time.time() - 100)
+    carried = nightly_carry.carry(root, "v-3", ["win"])
+    for n in names_for("v-1")["rpi-armhf"]:
+        assert carried[n] == "v-1"
+        assert os.path.exists(os.path.join(new, n))
+    for n in names_for("v-2")["psc"]:
+        assert carried[n] == "v-2"
+    with open(os.path.join(new, "sources.json"), encoding="utf-8") as f:
+        assert json.load(f)["carried"] == carried

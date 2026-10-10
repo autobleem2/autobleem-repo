@@ -255,3 +255,60 @@ def test_cleanup_partial_refuses_a_symlinked_partial_and_deletes_nothing(tmp_pat
     r = publish(repo, "cleanup-partial", "nightly", "v-9")
     assert r.returncode != 0
     assert os.path.isfile(os.path.join(folder, "sources.json"))
+
+
+#*******************************
+# the final publish: the merge happens only after the final upload
+#*******************************
+
+def test_a_failed_final_upload_leaves_the_partial_folder_and_the_nightly_untouched(tmp_path):
+    repo = str(tmp_path / "site")
+    version = "v2.0.0-alpha2-7-g4444444"
+    folder = finished_nightly(repo, version, time.time() - 5000)
+    win = "autobleem-win-%s.zip" % version
+    assert publish(repo, "--partial", "nightly", version, files=[make_file(tmp_path, win, b"win")]).returncode == 0
+    partial = os.path.join(repo, "nightly", version + ".partial")
+    before_partial, before_folder = snapshot(partial), snapshot(folder)
+    # the upload (a copy into the site tree) fails: a directory sits where the final sources.json has to go
+    os.remove(os.path.join(folder, "sources.json"))
+    os.mkdir(os.path.join(folder, "sources.json"))
+    before_folder = snapshot(folder)
+    r = publish(repo, "nightly", version, files=[make_file(tmp_path, "sources.json", b"{}")])
+    assert r.returncode != 0
+    assert os.path.isdir(os.path.join(folder, "sources.json"))
+    assert snapshot(partial) == before_partial
+    assert snapshot(folder) == before_folder
+
+
+def test_a_staged_file_never_replaces_a_file_of_the_final_set(tmp_path):
+    repo = str(tmp_path / "site")
+    version = "v2.0.0-alpha2-8-g5555555"
+    win = "autobleem-win-%s.zip" % version
+    other = "autobleem-psc-%s.tar.gz" % version
+    assert publish(repo, "--partial", "nightly", version, files=[make_file(tmp_path, win, b"staged win")]).returncode == 0
+    assert publish(repo, "--partial", "nightly", version, files=[make_file(tmp_path, other, b"staged psc")]).returncode == 0
+    (tmp_path / "final").mkdir()
+    final_win = tmp_path / "final" / win
+    final_win.write_bytes(b"final win")
+    r = publish(repo, "nightly", version, files=[str(final_win)])
+    assert r.returncode == 0, r.stderr
+    folder = os.path.join(repo, "nightly", version)
+    assert open(os.path.join(folder, win), "rb").read() == b"final win"
+    with open(os.path.join(folder, win + ".sha256"), encoding="utf-8") as f:
+        assert f.read().split()[0] == hashlib.sha256(b"final win").hexdigest()
+    assert open(os.path.join(folder, other), "rb").read() == b"staged psc"
+    assert not os.path.exists(os.path.join(repo, "nightly", version + ".partial"))
+
+
+def test_a_symlinked_stale_partial_does_not_stop_the_index(tmp_path):
+    repo = str(tmp_path / "site")
+    finished_nightly(repo, "v2.0.0-alpha2-9-g6666666", time.time() - 5000)
+    target = tmp_path / "elsewhere"
+    put(str(target / "keep.txt"), b"keep", time.time() - 10 * DAY)
+    link = os.path.join(repo, "nightly", "v2.0.0-alpha2-10-g7777777.partial")
+    os.symlink(str(target), link)
+    r = subprocess.run([sys.executable, os.path.join(TOOLS, "repo_index.py"), repo, "--base-url", BASE_URL],
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    assert os.path.islink(link)
+    assert (target / "keep.txt").read_bytes() == b"keep"

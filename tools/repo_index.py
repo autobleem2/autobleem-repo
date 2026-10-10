@@ -1233,9 +1233,10 @@ def newest_file_time(folder):
 
 
 def partial_folders(root):
-    """The <version>.partial staging folders under `root`."""
+    """The <version>.partial staging folders under `root` (a symlink is not one: prune() cannot rmtree it)."""
     return sorted(os.path.join(root, v) for v in os.listdir(root)
-                  if v.endswith(PARTIAL_SUFFIX) and os.path.isdir(os.path.join(root, v)))
+                  if v.endswith(PARTIAL_SUFFIX) and os.path.isdir(os.path.join(root, v))
+                  and not os.path.islink(os.path.join(root, v)))
 
 
 def index_nightly(repo, base_url, section="nightly"):

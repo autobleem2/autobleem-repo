@@ -76,15 +76,28 @@ def published_time(folder):
     return max(times) if times else os.path.getmtime(folder)
 
 
-def previous_nightly(root, new_version):
-    """The newest finished nightly folder other than `new_version` (not .partial, not .incomplete), or None."""
+def finished_nightlies(root, new_version):
+    """The finished nightly folders other than `new_version` (not .partial, not .incomplete), newest first."""
     if not os.path.isdir(root):
-        return None
+        return []
     folders = [os.path.join(root, v) for v in os.listdir(root)
                if v != new_version and not v.endswith(PARTIAL_SUFFIX)
                and os.path.isdir(os.path.join(root, v))
                and not os.path.exists(os.path.join(root, v, INCOMPLETE_MARKER))]
-    return max(folders, key=published_time) if folders else None
+    return sorted(folders, key=published_time, reverse=True)
+
+
+def previous_nightly(root, new_version):
+    """The newest finished nightly folder other than `new_version`, or None."""
+    folders = finished_nightlies(root, new_version)
+    return folders[0] if folders else None
+
+
+def unit_of(name):
+    """What a file is carried for: its platform, or the Imager template (own unit), or None."""
+    if name.endswith(".sha256"):
+        name = name[:-len(".sha256")]
+    return "imager-template" if name == IMAGER_TEMPLATE else platform_of(name)
 
 
 def read_json(path):
@@ -108,19 +121,30 @@ def link_or_copy(src, dst):
 def carry(root, new_version, built_platforms):
     """Link the files into root/new_version; returns {file: from-version}. Never overwrites an existing file."""
     dest = os.path.join(root, new_version)
-    previous = previous_nightly(root, new_version)
-    if previous is None or not os.path.isdir(dest):
+    if not os.path.isdir(dest):
         return {}
-    prev_sources = read_json(os.path.join(previous, "sources.json"))
-    earlier = prev_sources.get("carried") if isinstance(prev_sources.get("carried"), dict) else {}
     carried = {}
-    for name in files_to_carry(built_platforms, os.listdir(previous)):
-        src, dst = os.path.join(previous, name), os.path.join(dest, name)
-        if not os.path.isfile(src) or os.path.lexists(dst):
-            continue
-        link_or_copy(src, dst)
-        if not name.endswith(".sha256"):
-            carried[name] = earlier.get(name, os.path.basename(previous))
+    done = set()
+    # the source is chosen PER PLATFORM: the newest finished folder that has a file of that platform (a newest
+    # folder that is package-only or a failed-image leftover must not hide the files of an older one)
+    for previous in finished_nightlies(root, new_version):
+        prev_sources = read_json(os.path.join(previous, "sources.json"))
+        earlier = prev_sources.get("carried") if isinstance(prev_sources.get("carried"), dict) else {}
+        found = set()
+        for name in files_to_carry(built_platforms, os.listdir(previous)):
+            unit = unit_of(name)
+            if unit in done:
+                continue
+            found.add(unit)
+            src, dst = os.path.join(previous, name), os.path.join(dest, name)
+            if not os.path.isfile(src) or os.path.lexists(dst):
+                continue
+            link_or_copy(src, dst)
+            if not name.endswith(".sha256"):
+                carried[name] = earlier.get(name, os.path.basename(previous))
+        done |= found
+    # read-modify-write of sources.json: this must run AFTER the final upload (which writes the run's own
+    # sources.json), never earlier - an earlier run would be overwritten by it and the "carried" record lost
     if carried:
         path = os.path.join(dest, "sources.json")
         data = read_json(path)
