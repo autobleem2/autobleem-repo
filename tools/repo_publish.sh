@@ -102,7 +102,7 @@
 #                                                                                 into nightly/<version>/ - and the index
 #                                                                                 is NOT run; repo_index.py never lists a
 #                                                                                 .partial folder (and prunes one older
-#                                                                                 than 2 days), so every finished nightly
+#                                                                                 than 6 hours), so every finished nightly
 #                                                                                 stays whole. The run's last publish,
 #                                                                                 a plain `nightly <version> ...`, moves
 #                                                                                 the staged files into nightly/<version>/

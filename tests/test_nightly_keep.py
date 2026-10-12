@@ -276,6 +276,33 @@ def test_a_build_still_being_published_is_left_alone():
     assert repo_index.unfinished_nightlies(["a"], lambda f: False, published.get, now) == ([], [])
 
 
+def test_an_unfinished_build_is_pruned_as_soon_as_a_newer_publish_exists():
+    # AUTOBLEEM-20: six abandoned runs (3-5 GB each) filled the disk before any reached the age limit
+    hour = 3600
+    now = 10 * 24 * hour
+    published = {"old": now - 9 * hour, "u1": now - 8 * hour, "u2": now - 5 * hour, "fin": now - 3 * hour,
+                 "u3": now - 2 * hour, "u4": now - hour}
+    marked = {"u1", "u2", "u3", "u4"}
+    unfinished, stale = repo_index.unfinished_nightlies(
+        ["old", "u1", "u2", "fin", "u3", "u4"], lambda f: f in marked, published.get, now)
+    # u1, u2 have a newer finished build, u3 a newer unfinished one; only the newest unfinished one is kept
+    assert unfinished == ["u4"]
+    assert stale == ["u1", "u2", "u3"]
+    # an unfinished build older than a finished one is gone even when it is the only unfinished one
+    assert repo_index.unfinished_nightlies(["u2", "fin"], lambda f: f == "u2", published.get, now) == ([], ["u2"])
+    # the newest of all, unfinished, is kept while it is young ...
+    assert repo_index.unfinished_nightlies(["fin", "u4"], lambda f: f == "u4", published.get, now) == (["u4"], [])
+
+
+def test_the_newest_unfinished_build_is_abandoned_after_six_hours():
+    assert repo_index.UNFINISHED_MAX_AGE == 6 * 3600
+    now = 10 * 24 * 3600
+    published = {"fin": now - 20 * 3600, "u": now - 7 * 3600}
+    assert repo_index.unfinished_nightlies(["fin", "u"], lambda f: f == "u", published.get, now) == ([], ["u"])
+    published["u"] = now - 5 * 3600
+    assert repo_index.unfinished_nightlies(["fin", "u"], lambda f: f == "u", published.get, now) == (["u"], [])
+
+
 def test_a_newer_incomplete_folder_is_never_the_one_kept(tmp_path):
     """A run still being published (--partial, marked .incomplete) is never mistaken for the newest finished
     nightly, even though it is the most recently touched folder on disk - index_nightly() filters it out

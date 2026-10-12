@@ -1209,13 +1209,16 @@ def nightly_folders_to_keep(folders, is_full=nightly_folder_is_full):
 
 # repo_publish.sh --partial leaves it in nightly/<version>/ until the run's last publish takes it away
 INCOMPLETE_MARKER = ".incomplete"
-UNFINISHED_MAX_AGE = 2 * 24 * 3600  # seconds since the last file arrived
+UNFINISHED_MAX_AGE = 6 * 3600  # seconds since the last file arrived
 
 
 def unfinished_nightlies(folders, is_incomplete, published, now):
-    """The folders still being published, and those of them abandoned (nothing new for UNFINISHED_MAX_AGE)."""
+    """The folders still being published, and those of them abandoned: nothing new for UNFINISHED_MAX_AGE, or a
+    newer nightly (finished or not) published since - only the newest unfinished one can still be a running
+    publish, so only it is kept."""
     unfinished = [f for f in folders if is_incomplete(f)]
-    stale = [f for f in unfinished if now - published(f) > UNFINISHED_MAX_AGE]
+    newest = max((published(f) for f in folders), default=None)
+    stale = [f for f in unfinished if now - published(f) > UNFINISHED_MAX_AGE or published(f) < newest]
     return [f for f in unfinished if f not in stale], stale
 
 
@@ -1257,7 +1260,7 @@ def index_nightly(repo, base_url, section="nightly"):
         times = [os.path.getmtime(os.path.join(folder, n)) for n in os.listdir(folder) if n.endswith(".sha256")]
         return max(times) if times else os.path.getmtime(folder)
 
-    # a .partial staging folder is never a build: not listed, not counted; one abandoned for two days goes
+    # a .partial staging folder is never a build: not listed, not counted; one abandoned for UNFINISHED_MAX_AGE goes
     now = datetime.now().timestamp()
     prune([p for p in partial_folders(root) if now - newest_file_time(p) > UNFINISHED_MAX_AGE], [],
           "abandoned partial development build")
@@ -1265,7 +1268,8 @@ def index_nightly(repo, base_url, section="nightly"):
                       if os.path.isdir(os.path.join(root, v)) and not v.endswith(PARTIAL_SUFFIX)),
                      key=published)
     # a build still being published (repo_publish.sh --partial) is not a nightly yet: it neither replaces the one
-    # before nor is listed until its run's last publish; one a run left unfinished goes after two days
+    # before nor is listed until its run's last publish; one a run left unfinished goes as soon as a newer
+    # nightly exists, or after UNFINISHED_MAX_AGE
     unfinished, stale = unfinished_nightlies(
         folders, lambda f: os.path.exists(os.path.join(f, INCOMPLETE_MARKER)), published, datetime.now().timestamp())
     prune(stale, [], "unfinished development build")
