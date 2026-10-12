@@ -238,7 +238,11 @@ def main(argv=None):
     ap.add_argument("--cache", default=None, help="cache folder (default: <out>/.cache)")
     ap.add_argument("--limit", type=int, default=None, help="only the first N discs of the list")
     args = ap.parse_args(argv)
-    index = run(args.out, args.cache or os.path.join(args.out, ".cache"), args.limit)
+    try:
+        index = run(args.out, args.cache or os.path.join(args.out, ".cache"), args.limit)
+    except (urllib.error.URLError, OSError) as e:
+        print("sbi_pack: cannot read redump's list: %s" % e, file=sys.stderr)
+        return 1
     print("%d serials, %d files in %s" % (len(index), sum(len(v) for v in index.values()),
                                           os.path.join(args.out, "sbi")))
     return 0
