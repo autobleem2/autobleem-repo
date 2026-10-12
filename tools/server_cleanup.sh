@@ -14,7 +14,29 @@
 # Needs the Docker socket - .github/workflows/cleanup.yml runs it on the self-hosted runner every night.
 #
 #   tools/server_cleanup.sh [--dry-run]
+#   tools/server_cleanup.sh --check-disk    only the alarm below, no cleanup
+#
+# The alarm (AUTOBLEEM-20): the repo has no notification channel (no webhook, no mail), so a disk above
+# DISK_WARN_PCT (default 90) % used is reported the one way the runner can: the step fails with an ::error::
+# annotation on the run, which GitHub mails to whoever watches the workflow. cleanup.yml runs it as its last
+# step, after the docker cleanup and the index run (which prunes the old nightlies), so it fires only when
+# those did not make room.
 set -uo pipefail
+
+check_disk() {
+    local limit=${DISK_WARN_PCT:-90} used
+    used=$(df --output=pcent / | tail -1 | tr -dc '0-9')
+    echo "disk: / is ${used:-?}% used (limit $limit%)"
+    if [ -n "$used" ] && [ "$used" -gt "$limit" ]; then
+        echo "::error title=Build server disk almost full::/ is ${used}% used (limit ${limit}%) - free space before the next build dies"
+        return 1
+    fi
+}
+
+if [ "${1:-}" = --check-disk ]; then
+    check_disk
+    exit $?
+fi
 
 DRY=0
 [ "${1:-}" = --dry-run ] && DRY=1
