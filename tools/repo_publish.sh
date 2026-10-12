@@ -67,6 +67,13 @@
 #   tools/repo_publish.sh deps boost boost_1_74_0.tar.bz2                      -> deps/boost/ (third-party build dependencies our
 #                                                                                 builds fetch, pinned by sha256: never listed, never
 #                                                                                 pruned, never replaced in place)
+#   tools/repo_publish.sh [--dry-run] sbi <out>/sbi                            -> sbi/ (the LibCrypt .sbi pack tools/sbi_pack.py
+#                                                                                 builds: index.json + *.sbi only, checked first;
+#                                                                                 replaces the previous pack whole - files of the
+#                                                                                 old pack that are not in the new one are removed;
+#                                                                                 no .sha256 sidecars. --dry-run checks the folder
+#                                                                                 and prints what would be added/removed, uploads
+#                                                                                 nothing - its ssh call is a read-only listing)
 #   tools/repo_publish.sh assets                                               -> assets/ (tools/repo_assets.py stages
 #                                                                                 tools/site-assets/: the page's picture,
 #                                                                                 logo, emblem, icon, font)
@@ -139,6 +146,7 @@ REPO_DIR="${REPO_DIR:-/home/claude/autobleem-repo}"
 AB_REPO_URL="${AB_REPO_URL:-https://autobleem.retromenele.pl}"
 LOCAL=0
 PARTIAL=0
+DRY=0
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # the Python that runs this machine's own steps (the generator merge, the assets): $PYTHON, else python3 or python
@@ -295,6 +303,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --local) LOCAL=1; shift ;;
         --partial) PARTIAL=1; shift ;;
+        --dry-run) DRY=1; shift ;;
         -h|--help) usage ;;
         *) break ;;
     esac
@@ -392,10 +401,17 @@ case "$KIND" in
     mirror)    [ $# -ge 2 ] || usage 1; NAME="$1"; shift; DEST="mirror/$NAME" ;;
     pe-source) [ $# -ge 2 ] || usage 1; NAME="$1"; shift; pe_source_check "$NAME" "$@" || exit 1; DEST="source/$NAME" ;;
     deps)      [ $# -ge 2 ] || usage 1; NAME="$1"; shift; DEST="deps/$NAME" ;;
+    # the LibCrypt .sbi pack: one folder, checked before anything is staged (tools/sbi_pack.py --check)
+    sbi)       [ $# -eq 1 ] || usage 1; SBI_DIR="$1"; "$PY" "$HERE/sbi_pack.py" --check "$SBI_DIR" || { echo "not published: $SBI_DIR is not a good .sbi pack" >&2; exit 1; }
+               set -- "$SBI_DIR"/*; DEST="sbi" ;;
     assets)    DEST="assets" ;;
     index)     DEST="" ;;
     *)         echo "unknown kind: $KIND" >&2; usage 1 ;;
 esac
+if [ "$DRY" -eq 1 ] && [ "$KIND" != sbi ]; then
+    echo "--dry-run is for the sbi kind (and withdraw) only" >&2
+    exit 1
+fi
 if [ "$PARTIAL" -eq 1 ] && [ "$KIND" != nightly ] && [ "$KIND" != preview ]; then
     echo "--partial is for a development build (nightly, preview) only" >&2
     exit 1
@@ -474,14 +490,49 @@ if [ -n "$DEST" ]; then
         cp "$f" "$STAGE/$FDEST/"
         case "$f" in
             *.json|*.txt|*.sha256|*.ttf|*.yaml) ;;
+            *.sbi) ;; # the pack is index.json + *.sbi only
             *) (cd "$STAGE/$FDEST" && sha256sum "$(basename "$f")" > "$(basename "$f").sha256") ;;
         esac
     done
     if [ "$KIND" = testplans ]; then
         echo "publishing to $DEST: $(cd "$STAGE/$DEST" && find . -type f | sed 's|^\./||' | sort | tr '\n' ' ')"
+    elif [ "$KIND" = sbi ]; then
+        echo "publishing to $DEST: index.json and $(cd "$STAGE/$DEST" && ls | grep -c '\.sbi$') .sbi files (replaces the previous pack)"
     else
         echo "publishing to $DEST: $(cd "$STAGE/$DEST" && ls | grep -v '\.sha256$' | tr '\n' ' ')"
     fi
+fi
+
+# the sbi pack replaces the previous one whole: after the upload, files of the old pack that are not in the new one go
+# (index.json and *.sbi directly in sbi/ and nothing else). The names were checked by sbi_pack.py --check.
+sbi_prune_snippet() {
+    local keep="" f
+    while IFS= read -r f; do keep="$keep $(printf '%q' "$f")"; done < <(cd "$STAGE/sbi" && ls)
+    printf 'keep=(%s)\n' "$keep"
+    cat <<'EOF'
+if [ -d sbi ] && [ ! -L sbi ]; then
+    find sbi -mindepth 1 -maxdepth 1 -type f \( -name '*.sbi' -o -name 'index.json' \) -printf '%f\n' | while IFS= read -r f; do
+        skip=0
+        for x in "${keep[@]}"; do if [ "$x" = "$f" ]; then skip=1; fi; done
+        if [ "$skip" -eq 0 ]; then rm -f -- "sbi/$f"; fi
+    done
+fi
+EOF
+}
+
+# --dry-run (sbi): what would be added and what would be removed; the only remote call is a read-only listing
+if [ "$DRY" -eq 1 ]; then
+    if [ "$LOCAL" -eq 1 ]; then
+        old="$( { cd "$REPO_DIR/sbi" 2>/dev/null && find . -mindepth 1 -maxdepth 1 -type f -printf '%f\n'; } || true)"
+    else
+        old="$(ssh "$REPO_HOST" "cd '$REPO_DIR/sbi' 2>/dev/null && find . -mindepth 1 -maxdepth 1 -type f -printf '%f\\n' || true" </dev/null)"
+    fi
+    new="$(cd "$STAGE/sbi" && ls)"
+    echo "will upload to $REPO_DIR/sbi/ ($( [ "$LOCAL" -eq 1 ] && echo "on this machine" || echo "on $REPO_HOST")): $(grep -c . <<<"$new") files, of which new: $(comm -13 <(sort <<<"$old") <(sort <<<"$new") | grep -c . || true)"
+    echo "will remove (in the old pack, not in the new one):"
+    comm -23 <(sort <<<"$old") <(sort <<<"$new") | sed 's/^/  /'
+    echo "--dry-run: nothing uploaded, nothing removed"
+    exit 0
 fi
 
 # part of a development build: the files into <version>.partial/, no generator, no index (see --partial above)
@@ -549,6 +600,7 @@ set -e
 cd "$REPO_DIR"
 $( { [ "$KIND" = nightly ] || [ "$KIND" = preview ]; } && { printf "DEST='%s'\n" "$DEST"; merge_partial_snippet; } )
 $( { [ "$KIND" = nightly ] || [ "$KIND" = preview ]; } && echo "rm -f \"$DEST/.incomplete\" # the build's last publish: it is whole now" )
+$( [ "$KIND" = sbi ] && sbi_prune_snippet )
 $( [ -n "$CARRY_PLATFORMS" ] && echo "python3 .tools/nightly_carry.py nightly \"$CARRY_VERSION\" \"$CARRY_PLATFORMS\" # the platforms this run did not build, from the previous nightly" )
 if [ -f assets/icon.png ]; then mkdir -p rpi-imager && cp assets/icon.png rpi-imager/icon.png; fi
 if [ -f assets/favicon.ico ]; then cp assets/favicon.ico favicon.ico; fi

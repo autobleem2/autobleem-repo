@@ -151,8 +151,16 @@ LibCrypt disc in a USB CD drive: it reads redump.org's psx LibCrypt list, each d
 `/disc/<id>/sbi/`, checks every file (`SBI\0`, whole records; a bad one is reported and skipped) and writes
 `DIR/sbi/<SERIAL>.<n>.sbi` (n in redump id order, identical bytes not repeated) and `DIR/sbi/index.json`
 (`{"SCES-02835": ["SCES-02835.1.sbi", ...]}`). One request at a time, ~1 s apart, retries; the cache (default
-`DIR/.cache`) keeps disc pages and files, so a re-run fetches only new discs. Nothing publishes it: the pack is copied to
-the site by hand. Tested offline in `tests/test_sbi_pack.py`.
+`DIR/.cache`) keeps disc pages and files, so a re-run fetches only new discs. The list's pager shows pages 2..N at once: the script
+fetches them in order and stops at the first page with no discs.
+**Publishing** is `tools/repo_publish.sh sbi <DIR>` (kind `sbi`, 2026-10-12): `<DIR>` is the pack folder, `index.json` +
+`*.sbi` only - `sbi_pack.py --check` refuses anything else, an `index.json` that does not parse, a listed file that is
+missing, an unlisted `.sbi` or a bad `.sbi`. It lands in `<site>/sbi/` and **replaces the previous pack whole** (old
+files not in the new one are removed after the upload; no `.sha256` sidecars). `--dry-run` checks and prints what
+would be added/removed, uploading nothing; `--local` and the MSYS2 rsync path work as for every kind. The launcher
+reads `<site>/sbi/index.json` and `<site>/sbi/<file>`. **Refresh order**: `python3 tools/sbi_pack.py --out OUT`, then
+`bash tools/repo_publish.sh --dry-run sbi OUT/sbi`, then `bash tools/repo_publish.sh sbi OUT/sbi`. Tested offline in
+`tests/test_sbi_pack.py`.
 
 ## The PSC stick zips (PLATFORM-21)
 

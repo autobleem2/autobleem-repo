@@ -11,9 +11,10 @@ for its serial(s), downloads <disc>/sbi/ and writes
 A file whose bytes equal another version of the same serial is not repeated. Every file is checked ("SBI\\0" and
 whole records) and a bad one is reported and skipped. Polite: one request at a time, a pause between requests,
 retries with backoff, a cache folder so a re-run fetches only the discs it has not seen (the list pages are always
-read again - they are how a new disc shows up). Publishing the result is done by hand.
+read again - they are how a new disc shows up). Publishing the result: tools/repo_publish.sh sbi DIR/sbi.
 
     sbi_pack.py --out DIR [--cache DIR] [--limit N]
+    sbi_pack.py --check PACK-DIR        only check a pack folder (repo_publish.sh sbi runs this first)
 """
 import argparse
 import html
@@ -35,7 +36,8 @@ TIMEOUT = 60
 
 DISC_LINK_RE = re.compile(r'href="(?:https?://redump\.org)?/disc/(\d+)/?"')
 PAGE_LINK_RE = re.compile(r'href="([^"]*?(?:/page/\d+|[?&]page=\d+)[^"]*)"')
-ROW_RE = re.compile(r"<tr[^>]*>\s*<th[^>]*>(.*?)</th>\s*<td[^>]*>(.*?)</td>", re.S | re.I)
+PAGE_NUMBER_RE = re.compile(r"(?:/page/|[?&]page=)(\d+)")
+ROW_RE =re.compile(r"<tr[^>]*>\s*<th[^>]*>(.*?)</th>\s*<td[^>]*>(.*?)</td>", re.S | re.I)
 TAG_RE = re.compile(r"<[^>]+>")
 SERIAL_RE = re.compile(r"^[A-Z]{3,5}-?\d{3,6}$")
 
@@ -137,6 +139,48 @@ def write_pack(pack, out):
     return index
 
 
+PACK_FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.sbi$")
+
+
+def check_pack(folder):
+    """The reasons a pack folder must not be published (empty = fine): only index.json and *.sbi, index.json
+    parses and lists whole files that are all there, and every .sbi is listed."""
+    if not os.path.isdir(folder):
+        return ["not a folder: %s" % folder]
+    problems, sbis = [], set()
+    for name in sorted(os.listdir(folder)):
+        path = os.path.join(folder, name)
+        if name == "index.json":
+            continue
+        if not PACK_FILE_RE.match(name) or os.path.islink(path) or not os.path.isfile(path):
+            problems.append("not part of the pack (index.json and *.sbi only): %s" % name)
+        else:
+            sbis.add(name)
+    try:
+        with open(os.path.join(folder, "index.json"), encoding="utf-8") as f:
+            index = json.load(f)
+    except (OSError, ValueError) as e:
+        return problems + ["index.json: %s" % e]
+    if not isinstance(index, dict) or not all(
+            isinstance(k, str) and isinstance(v, list) and all(isinstance(n, str) for n in v)
+            for k, v in index.items()):
+        return problems + ["index.json is not {serial: [file names]}"]
+    listed = set()
+    for serial, names in index.items():
+        for name in names:
+            listed.add(name)
+            if name not in sbis:
+                problems.append("index.json lists %s (%s) but the folder has no such file" % (name, serial))
+    for name in sorted(sbis - listed):
+        problems.append("%s is not listed in index.json" % name)
+    for name in sorted(sbis & listed):
+        with open(os.path.join(folder, name), "rb") as f:
+            bad = check_sbi(f.read())
+        if bad:
+            problems.append("%s: %s" % (name, bad))
+    return problems
+
+
 class Fetcher:
     def __init__(self, pause=PAUSE, opener=None, sleep=time.sleep):
         self.pause = pause
@@ -189,22 +233,24 @@ def cached(cache, name, fetch):
 
 def list_discs(fetcher, limit=None, log=print):
     """Every LibCrypt disc id of the list, following its paging links. Always fetched fresh."""
-    ids, seen, todo = [], set(), [BASE + LIST_PATH]
+    ids, fetched, todo = [], set(), {1: BASE + LIST_PATH}  # page number -> address
     while todo:
-        url = todo.pop(0)
-        if url in seen:
-            continue
-        seen.add(url)
+        number = min(todo)  # the pager shows pages 2..N at once: go in order, stop at the first empty one
+        url = todo.pop(number)
+        fetched.add(number)
         page = fetcher.get(url).decode("utf-8", "replace")
         found, pages = parse_list(page)
         log("list %s: %d discs" % (url, len(found)))
+        if not found:
+            break
         for i in found:
             if i not in ids:
                 ids.append(i)
         for link in pages:
             full = urllib.parse.urljoin(url, link)
-            if full.startswith(BASE + LIST_PATH) and full not in seen and full not in todo:
-                todo.append(full)
+            m = PAGE_NUMBER_RE.search(full)
+            if m and full.startswith(BASE + LIST_PATH) and int(m.group(1)) not in fetched:
+                todo.setdefault(int(m.group(1)), full)
         if limit and len(ids) >= limit:
             break
     return ids[:limit] if limit else ids
@@ -234,10 +280,18 @@ def run(out, cache, limit=None, fetcher=None, log=print):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", required=True, help="folder that gets sbi/")
+    ap.add_argument("--out", help="folder that gets sbi/")
     ap.add_argument("--cache", default=None, help="cache folder (default: <out>/.cache)")
     ap.add_argument("--limit", type=int, default=None, help="only the first N discs of the list")
+    ap.add_argument("--check", metavar="DIR", help="only check a pack folder (what repo_publish.sh sbi does)")
     args = ap.parse_args(argv)
+    if args.check:
+        problems = check_pack(args.check)
+        for p in problems:
+            print("sbi_pack: %s" % p, file=sys.stderr)
+        return 1 if problems else 0
+    if not args.out:
+        ap.error("--out is required")
     try:
         index = run(args.out, args.cache or os.path.join(args.out, ".cache"), args.limit)
     except (urllib.error.URLError, OSError) as e:
