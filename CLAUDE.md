@@ -144,6 +144,16 @@ longer developed (the owner's decision), so it has no nightly kind and its CI pu
 `emu/pcsx-ab/nightly/` too if one were ever published there by hand. The PS1 emulators tab on the download
 page draws the same three pills (`rel`/`pre`/`dev`) as every other tab. Tested in `tests/test_pcsx_index.py`.
 
+## The LibCrypt .sbi pack (DISC-10)
+
+`tools/sbi_pack.py --out DIR [--cache DIR] [--limit N]` builds the pack the launcher fetches by serial for a
+LibCrypt disc in a USB CD drive: it reads redump.org's psx LibCrypt list, each disc's page (serials, version) and
+`/disc/<id>/sbi/`, checks every file (`SBI\0`, whole records; a bad one is reported and skipped) and writes
+`DIR/sbi/<SERIAL>.<n>.sbi` (n in redump id order, identical bytes not repeated) and `DIR/sbi/index.json`
+(`{"SCES-02835": ["SCES-02835.1.sbi", ...]}`). One request at a time, ~1 s apart, retries; the cache (default
+`DIR/.cache`) keeps disc pages and files, so a re-run fetches only new discs. Nothing publishes it: the pack is copied to
+the site by hand. Tested offline in `tests/test_sbi_pack.py`.
+
 ## The PSC stick zips (PLATFORM-21)
 
 A release and a development build carry `autobleem-psc-<v>-base.zip` (the stick without RetroArch) and
