@@ -1,11 +1,12 @@
 #!/bin/bash
 # The build server's routine cleanup (the disk ran full on 2026-09-23 and took the runner down with it):
-#   - every ghcr.io/autobleem2/autobleem-build tag but :develop and :latest (each image build leaves a :<sha>
-#     tag; the tags share most layers, but together they held ~5 GB),
 #   - dangling images, containers stopped for more than a day, build cache unused for three days,
-#   - every other image older than three days that no container uses (docker rmi refuses the ones a
-#     container - running or not - still uses, so a running build and the runner itself are safe); the
-#     autobleem-build image is never in that list, whatever its age.
+#   - every image older than three days that no container uses (docker rmi refuses the ones a
+#     container - running or not - still uses, so a running build and the runner itself are safe); no image of
+#     a KEEP_IMAGES repository (autobleem-build, autobleem-kernel-build; all tags, whatever the age) is ever
+#     in that list.
+# A failing `docker images` listing fails the script (exit 1, message on stderr).
+# DRY_RUN=1 (or --dry-run) prints what would be removed and removes nothing.
 # Docker refuses to remove an image a container still uses, so a running build is never touched. The site's
 # old nightlies are not this script's: repo_index.py prunes them on every publish (NIGHTLY_KEEP).
 # The site's tree is not this script's at all - and source/ (the GPL source archives of the PE Apps, kept at least
@@ -40,10 +41,13 @@ fi
 
 DRY=0
 [ "${1:-}" = --dry-run ] && DRY=1
-KEEP_TAGS="develop latest"
-BUILD_IMAGE=ghcr.io/autobleem2/autobleem-build
+[ "${DRY_RUN:-0}" = 1 ] && DRY=1
+# Repositories whose images (every tag) are never removed; an entry matches the whole repository or its last
+# path component. docker/run.sh needs the kernel-build image locally.
+KEEP_IMAGES=${KEEP_IMAGES:-"autobleem-build ghcr.io/autobleem2/autobleem-build autobleem-kernel-build"}
 
 run() {
+    [ "$DRY" = 1 ] && echo "would run:"
     echo "+ $*"
     [ "$DRY" = 1 ] || "$@"
 }
@@ -52,28 +56,35 @@ echo "== before"
 df -h / | tail -1
 docker system df
 
-echo "== old build image tags"
-docker images "$BUILD_IMAGE" --format '{{.Tag}}' | while read -r tag; do
-    case " $KEEP_TAGS " in *" $tag "*) continue ;; esac
-    run docker rmi "$BUILD_IMAGE:$tag" || echo "   (in use - kept)"
-done
-
-echo "== dangling and unused old images, stopped containers, stale build cache"
+echo "== dangling images, stopped containers"
 run docker image prune -f
 run docker container prune -f --filter until=24h
 # 2026-10-02: a blanket `docker image prune -a` removed the 72 h old :develop build image (no container used it)
 # and the server, not logged in to ghcr, could not pull it back - every self-hosted publish step then failed with
-# "denied". So the old unused images are removed one by one, and no ghcr.io/autobleem2/autobleem-build tag is
-# ever listed (rmi, unlike prune, never touches an image a container uses).
+# "denied". So the old unused images are removed one by one, and no image of a KEEP_IMAGES repository (any tag)
+# is ever listed (rmi, unlike prune, never touches an image a container uses).
 # docker 24 has no `until` filter on `docker images` (only on prune), so the age is checked here from CreatedAt.
+echo "== unused old images"
+if ! listing=$(docker images --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.CreatedAt}}'); then
+    echo "::error title=Image cleanup failed::'docker images' failed - no image was removed" >&2
+    echo "server_cleanup: cannot list docker images" >&2
+    exit 1
+fi
 cutoff=$(date -d '72 hours ago' +%s)
-docker images --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.CreatedAt}}' | while read -r ref id day time zone _; do
-    case "$ref" in "$BUILD_IMAGE":*) continue ;; esac
+while read -r ref id day time zone _; do
+    [ -n "$ref" ] || continue
+    repo=${ref%:*}
+    keep=0
+    for k in $KEEP_IMAGES; do
+        { [ "$repo" = "$k" ] || [ "${repo##*/}" = "${k##*/}" ]; } && keep=1
+    done
+    [ "$keep" = 0 ] || continue
     created=$(date -d "$day $time $zone" +%s 2>/dev/null) || continue
     [ "$created" -lt "$cutoff" ] || continue
     case "$ref" in *:\<none\>) ref=$id ;; esac
     run docker rmi "$ref" || echo "   (in use - kept)"
-done
+done <<< "$listing"
+echo "== stale build cache"
 run docker builder prune -f --filter until=72h
 
 echo "== after"
