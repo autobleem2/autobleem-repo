@@ -65,8 +65,12 @@ run docker container prune -f --filter until=24h
 # and the server, not logged in to ghcr, could not pull it back - every self-hosted publish step then failed with
 # "denied". So the old unused images are removed one by one, and no ghcr.io/autobleem2/autobleem-build tag is
 # ever listed (rmi, unlike prune, never touches an image a container uses).
-docker images --filter until=72h --format '{{.Repository}}:{{.Tag}} {{.ID}}' | while read -r ref id; do
+# docker 24 has no `until` filter on `docker images` (only on prune), so the age is checked here from CreatedAt.
+cutoff=$(date -d '72 hours ago' +%s)
+docker images --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.CreatedAt}}' | while read -r ref id day time zone _; do
     case "$ref" in "$BUILD_IMAGE":*) continue ;; esac
+    created=$(date -d "$day $time $zone" +%s 2>/dev/null) || continue
+    [ "$created" -lt "$cutoff" ] || continue
     case "$ref" in *:\<none\>) ref=$id ;; esac
     run docker rmi "$ref" || echo "   (in use - kept)"
 done
