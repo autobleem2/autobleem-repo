@@ -1,10 +1,13 @@
 #!/bin/bash
 # The build server's routine cleanup (the disk ran full on 2026-09-23 and took the runner down with it):
+#   - every ghcr.io/autobleem2/autobleem-build tag but :develop and :latest (each image build leaves a :<sha>
+#     tag; the tags share most layers, but together they held ~5 GB) - the one deliberate exception to the
+#     keep list below, and the nightly's main reclaim,
 #   - dangling images, containers stopped for more than a day, build cache unused for three days,
-#   - every image older than three days that no container uses (docker rmi refuses the ones a
+#   - every other image older than three days that no container uses (docker rmi refuses the ones a
 #     container - running or not - still uses, so a running build and the runner itself are safe); no image of
-#     a KEEP_IMAGES repository (autobleem-build, autobleem-kernel-build; all tags, whatever the age) is ever
-#     in that list.
+#     a KEEP_IMAGES repository (autobleem-build, ghcr.io/autobleem2/autobleem-build, autobleem-kernel-build;
+#     all tags, whatever the age) is ever in that age-based list.
 # A failing `docker images` listing fails the script (exit 1, message on stderr).
 # DRY_RUN=1 (or --dry-run) prints what would be removed and removes nothing.
 # Docker refuses to remove an image a container still uses, so a running build is never touched. The site's
@@ -44,6 +47,8 @@ DRY=0
 [ "${DRY_RUN:-0}" = 1 ] && DRY=1
 # Repositories whose images (every tag) are never removed; an entry matches the whole repository or its last
 # path component. docker/run.sh needs the kernel-build image locally.
+KEEP_TAGS="develop latest"
+BUILD_IMAGE=ghcr.io/autobleem2/autobleem-build
 KEEP_IMAGES=${KEEP_IMAGES:-"autobleem-build ghcr.io/autobleem2/autobleem-build autobleem-kernel-build"}
 
 run() {
@@ -55,6 +60,18 @@ run() {
 echo "== before"
 df -h / | tail -1
 docker system df
+
+echo "== old build image tags"
+if ! tags=$(docker images "$BUILD_IMAGE" --format '{{.Tag}}'); then
+    echo "::error title=Image cleanup failed::'docker images' failed - no image tag was removed" >&2
+    echo "server_cleanup: cannot list docker images" >&2
+    exit 1
+fi
+while read -r tag; do
+    [ -n "$tag" ] || continue
+    case " $KEEP_TAGS " in *" $tag "*) continue ;; esac
+    run docker rmi "$BUILD_IMAGE:$tag" || echo "   (in use - kept)"
+done <<< "$tags"
 
 echo "== dangling images, stopped containers"
 run docker image prune -f
